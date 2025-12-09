@@ -6,7 +6,7 @@
 import { Filters } from '@/components/FilterDropdown';
 
 // Get API URL from environment variable, fallback to localhost
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 export interface Car {
   id: string;
@@ -21,12 +21,14 @@ export interface Car {
   image: string;
   location: string;
   url?: string;
+  colorHex?: string | null; // Hex color code for color indicator
 }
 
 export interface SearchResponse {
   cars: Car[];
   count: number;
   query?: string;
+  last_id?: string | number | null; // Cursor for pagination
 }
 
 export interface ApiError {
@@ -35,9 +37,37 @@ export interface ApiError {
 }
 
 /**
+ * Generate a car image URL from Unsplash based on car details
+ */
+function getCarImageUrl(make?: string, model?: string, year?: number): string {
+  const searchTerms = [make, model, year ? year.toString() : null]
+    .filter(Boolean)
+    .join(' ');
+  
+  // Use Unsplash Source API for dynamic car images
+  if (searchTerms) {
+    // Use the Unsplash Source API with proper encoding
+    const query = encodeURIComponent(`${searchTerms} car`);
+    return `https://source.unsplash.com/600x400/?${query}`;
+  }
+  
+  // Fallback to a generic car image from Unsplash
+  return 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=600&h=400&fit=crop&auto=format';
+}
+
+/**
  * Normalize car data from API to match frontend Car interface
  */
 function normalizeCar(car: any): Car {
+  // Filter out 'gas' and 'unknown' from fuelType
+  let fuelType = car.fuel_type || car.fuelType || null;
+  if (fuelType) {
+    const lower = fuelType.toLowerCase().trim();
+    if (lower === 'gas' || lower === 'unknown' || lower === 'null' || lower === '') {
+      fuelType = null;
+    }
+  }
+
   return {
     id: car.id?.toString() || Math.random().toString(),
     make: car.make || 'Unknown',
@@ -45,12 +75,14 @@ function normalizeCar(car: any): Car {
     year: car.year || 0,
     price: car.price || 0,
     mileage: car.mileage || 0,
-    fuelType: car.fuel_type || car.fuelType || 'Unknown',
+    fuelType: fuelType || '',
     bodyType: car.body_type || car.bodyType || car.carType || 'Unknown',
     color: car.color || 'Unknown',
-    image: car.image || car.image_url || 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=600&h=400&fit=crop',
+    // Map imageUrl from backend to image for frontend - check multiple possible field names
+    image: car.imageUrl || car.image || car.image_url || car.url || car.listing_url || getCarImageUrl(car.make, car.model, car.year),
     location: car.location || car.city || 'Unknown',
     url: car.url || car.listing_url,
+    colorHex: car.colorHex || car.color_hex || null, // Include colorHex from backend
   };
 }
 
@@ -92,21 +124,30 @@ async function apiRequest<T>(
 /**
  * AI-powered car search
  * Uses natural language query to find cars
+ * @param query - Search query string
+ * @param filters - Optional filters
+ * @param last_id - Optional cursor for pagination (ID of last car from previous search)
  */
 export async function searchCars(
   query: string,
-  filters?: Filters
+  filters?: Filters,
+  last_id?: string | number | null
 ): Promise<SearchResponse> {
   try {
     // If filters are provided, use filtered search endpoint
     if (filters && hasActiveFilters(filters)) {
-      return await searchCarsWithFilters(filters, query);
+      return await searchCarsWithFilters(filters, query, last_id);
     }
 
     // Otherwise, use AI search
+    const requestBody: any = { query: query.trim() };
+    if (last_id !== undefined && last_id !== null) {
+      requestBody.last_id = last_id;
+    }
+
     const response = await apiRequest<SearchResponse>('/api/search', {
       method: 'POST',
-      body: JSON.stringify({ query: query.trim() }),
+      body: JSON.stringify(requestBody),
     });
 
     // Normalize car data
@@ -123,10 +164,14 @@ export async function searchCars(
 /**
  * Filter-based car search
  * Uses specific filters to find cars
+ * @param filters - Filter criteria
+ * @param query - Optional search query
+ * @param last_id - Optional cursor for pagination (ID of last car from previous search)
  */
 export async function searchCarsWithFilters(
   filters: Filters,
-  query?: string
+  query?: string,
+  last_id?: string | number | null
 ): Promise<SearchResponse> {
   try {
     // Convert frontend filters to backend format
@@ -147,19 +192,24 @@ export async function searchCarsWithFilters(
     if (filters.bodyTypes && filters.bodyTypes.length > 0) {
       filterPayload.bodyTypes = filters.bodyTypes;
     }
-    if (filters.makes && filters.makes.length > 0) {
-      filterPayload.makes = filters.makes;
+    if (filters.makes && filters.makes.trim()) {
+      filterPayload.makes = [filters.makes];
     }
     if (filters.colors && filters.colors.length > 0) {
       filterPayload.colors = filters.colors;
     }
-    if (filters.models && filters.models.length > 0) {
-      filterPayload.models = filters.models;
+    if (filters.models && filters.models.trim()) {
+      filterPayload.models = [filters.models];
+    }
+
+    const requestBody: any = { filters: filterPayload };
+    if (last_id !== undefined && last_id !== null) {
+      requestBody.last_id = last_id;
     }
 
     const response = await apiRequest<SearchResponse>('/api/search/filtered', {
       method: 'POST',
-      body: JSON.stringify({ filters: filterPayload }),
+      body: JSON.stringify(requestBody),
     });
 
     // Normalize car data
@@ -213,7 +263,8 @@ export async function healthCheck(): Promise<{ status: string; message: string }
 function hasActiveFilters(filters: Filters): boolean {
   return !!(
     filters.bodyTypes?.length ||
-    filters.makes?.length ||
+    (filters.makes && filters.makes.trim()) ||
+    (filters.models && filters.models.trim()) ||
     filters.colors?.length ||
     filters.minYear ||
     filters.maxYear ||

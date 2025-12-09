@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -10,11 +10,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { SlidersHorizontal, X } from 'lucide-react';
+import { SlidersHorizontal, X, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export interface Filters {
   bodyTypes: string[];
-  makes: string[];
+  makes: string;
+  models: string;
   minYear: string;
   maxYear: string;
   minPrice: string;
@@ -29,14 +31,50 @@ interface FilterDropdownProps {
   onClearFilters: () => void;
 }
 
-const BODY_TYPES = ['SUV', 'Sedan', 'Truck', 'Coupe', 'Hatchback', 'Convertible', 'Van', 'Wagon'];
-const MAKES = ['Toyota', 'Honda', 'Ford', 'Chevrolet', 'BMW', 'Mercedes', 'Audi', 'Tesla', 'Nissan', 'Hyundai'];
-const COLORS = ['Black', 'White', 'Silver', 'Gray', 'Red', 'Blue', 'Green', 'Brown'];
+const BODY_TYPES = ['SUV', 'Sedan', 'Truck', 'Coupe', 'Hatchback', 'Convertible', 'Van', 'Hybrid'];
+const COLORS = ['Black', 'White', 'Silver', 'Gray', 'Red', 'Blue', 'Green', 'Brown', 'Yellow', 'Orange', 'Purple', 'Pink', 'Beige', 'Gold', 'Tan', 'Maroon', 'Navy', 'Teal'];
+
+// Unique makes from database (sorted alphabetically)
+const MAKES = [
+  'Acura', 'Alfa', 'Aston', 'Audi', 'Austin', 'Bentley', 'BMW', 'Buick', 'Cadillac', 'Chevrolet',
+  'Chrysler', 'Datsun', 'De', 'Dodge', 'Ferrari', 'Fiat', 'Ford', 'Freightliner', 'Genesis', 'GMC',
+  'Hino', 'Honda', 'Hummer', 'Hyundai', 'Infiniti', 'International', 'Jaguar', 'Jeep', 'JLG', 'Kia',
+  'Lamborghini', 'Land', 'Lexus', 'Lincoln', 'Lotus', 'Maserati', 'Matrix', 'Mazda', 'McLaren', 'Mercedes',
+  'Mercedes-Benz', 'Mercury', 'MG', 'MINI', 'Mitsubishi', 'Morgan', 'Nissan', 'Oldsmobile', 'Plymouth',
+  'Polaris', 'Polestar', 'Pontiac', 'Porsche', 'RAM', 'Rivian', 'Rolls', 'Saturn', 'Scion', 'SEASWIRL',
+  'Smart', 'Subaru', 'Suzuki', 'Tesla', 'Toyota', 'Vespa', 'VinFast', 'Volkswagen', 'VOLKSWAON', 'Volvo', 'Workhorse'
+].sort();
 
 export function FilterDropdown({ filters, onFiltersChange, onClearFilters }: FilterDropdownProps) {
+  const [makeSearch, setMakeSearch] = useState('');
+  const [makeOpen, setMakeOpen] = useState(false);
+  const makeDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Filter makes based on search
+  const filteredMakes = MAKES.filter(make => 
+    make.toLowerCase().includes(makeSearch.toLowerCase())
+  );
+  
+  // Close make dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (makeDropdownRef.current && !makeDropdownRef.current.contains(event.target as Node)) {
+        setMakeOpen(false);
+      }
+    };
+    
+    if (makeOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [makeOpen]);
+  
   const hasActiveFilters = 
     filters.bodyTypes.length > 0 ||
-    filters.makes.length > 0 ||
+    filters.makes ||
+    filters.models ||
     filters.colors.length > 0 ||
     filters.minYear ||
     filters.maxYear ||
@@ -44,8 +82,8 @@ export function FilterDropdown({ filters, onFiltersChange, onClearFilters }: Fil
     filters.maxPrice ||
     filters.maxMileage;
 
-  // For body type and make: single selection only
-  const toggleSingleFilter = (key: 'bodyTypes' | 'makes', value: string) => {
+  // For body type: single selection only
+  const toggleSingleFilter = (key: 'bodyTypes', value: string) => {
     const current = filters[key];
     const updated = current.includes(value) ? [] : [value];
     onFiltersChange({ ...filters, [key]: updated });
@@ -78,6 +116,85 @@ export function FilterDropdown({ filters, onFiltersChange, onClearFilters }: Fil
           <DropdownMenuLabel className="text-base font-semibold">Advanced Filters</DropdownMenuLabel>
           <DropdownMenuSeparator />
           
+          {/* Make - Searchable dropdown */}
+          <div className="py-2">
+            <Label className="text-sm font-medium">Make</Label>
+            <div className="mt-2 space-y-2 relative" ref={makeDropdownRef}>
+              <Input
+                placeholder="Search makes..."
+                value={makeSearch}
+                onChange={(e) => {
+                  setMakeSearch(e.target.value);
+                  setMakeOpen(true);
+                }}
+                className="h-9"
+                onFocus={() => setMakeOpen(true)}
+              />
+              {makeOpen && (
+                <div className="absolute z-50 w-full mt-1 border rounded-md bg-popover shadow-md max-h-[200px] overflow-y-auto">
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start text-left font-normal h-9"
+                    onClick={() => {
+                      onFiltersChange({ ...filters, makes: '' });
+                      setMakeSearch('');
+                      setMakeOpen(false);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        filters.makes === '' ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    All Makes
+                  </Button>
+                  {filteredMakes.map((make) => (
+                    <Button
+                      key={make}
+                      variant="ghost"
+                      className="w-full justify-start text-left font-normal h-9"
+                      onClick={() => {
+                        onFiltersChange({ ...filters, makes: make });
+                        setMakeSearch('');
+                        setMakeOpen(false);
+                      }}
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          filters.makes === make ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      {make}
+                    </Button>
+                  ))}
+                  {filteredMakes.length === 0 && (
+                    <div className="p-2 text-sm text-muted-foreground text-center">No make found</div>
+                  )}
+                </div>
+              )}
+              {filters.makes && !makeOpen && (
+                <div className="text-sm text-muted-foreground">Selected: {filters.makes}</div>
+              )}
+            </div>
+          </div>
+
+          <DropdownMenuSeparator />
+
+          {/* Model - Text input */}
+          <div className="py-2">
+            <Label className="text-sm font-medium">Model</Label>
+            <Input
+              placeholder="Enter model name"
+              value={filters.models || ''}
+              onChange={(e) => onFiltersChange({ ...filters, models: e.target.value })}
+              className="h-9 mt-2"
+            />
+          </div>
+
+          <DropdownMenuSeparator />
+          
           {/* Body Type - Single selection */}
           <div className="py-2">
             <Label className="text-sm font-medium">Body Type (select one)</Label>
@@ -91,26 +208,6 @@ export function FilterDropdown({ filters, onFiltersChange, onClearFilters }: Fil
                   onClick={() => toggleSingleFilter('bodyTypes', type)}
                 >
                   {type}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <DropdownMenuSeparator />
-
-          {/* Make - Single selection */}
-          <div className="py-2">
-            <Label className="text-sm font-medium">Make (select one)</Label>
-            <div className="flex flex-wrap gap-1 mt-2">
-              {MAKES.map(make => (
-                <Button
-                  key={make}
-                  variant={filters.makes.includes(make) ? 'secondary' : 'outline'}
-                  size="sm"
-                  className="text-xs h-7"
-                  onClick={() => toggleSingleFilter('makes', make)}
-                >
-                  {make}
                 </Button>
               ))}
             </div>

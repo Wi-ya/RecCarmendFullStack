@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Sparkles } from 'lucide-react';
+import { Send } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, isSupabaseReady } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -10,7 +10,8 @@ import { FilterDropdown, Filters } from '@/components/FilterDropdown';
 
 const initialFilters: Filters = {
   bodyTypes: [],
-  makes: [],
+  makes: '',
+  models: '',
   minYear: '',
   maxYear: '',
   minPrice: '',
@@ -29,7 +30,8 @@ export function SearchChat() {
 
   const hasActiveFilters = 
     filters.bodyTypes.length > 0 ||
-    filters.makes.length > 0 ||
+    (filters.makes && filters.makes.trim()) ||
+    (filters.models && filters.models.trim()) ||
     filters.colors.length > 0 ||
     filters.minYear ||
     filters.maxYear ||
@@ -76,7 +78,6 @@ export function SearchChat() {
       const params = new URLSearchParams();
       if (searchQuery) params.set('q', searchQuery);
       if (filters.bodyTypes.length > 0) params.set('bodyTypes', filters.bodyTypes.join(','));
-      if (filters.makes.length > 0) params.set('makes', filters.makes.join(','));
       if (filters.minYear) params.set('minYear', filters.minYear);
       if (filters.maxYear) params.set('maxYear', filters.maxYear);
       if (filters.minPrice) params.set('minPrice', filters.minPrice);
@@ -122,10 +123,6 @@ export function SearchChat() {
               onFiltersChange={setFilters}
               onClearFilters={() => setFilters(initialFilters)}
             />
-            <div className="hidden sm:flex items-center gap-2 text-muted-foreground text-sm">
-              <Sparkles className="h-4 w-4 text-secondary" />
-              <span>AI-powered</span>
-            </div>
           </div>
           <Button 
             variant="hero" 

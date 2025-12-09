@@ -6,6 +6,8 @@ REST API for car recommendation system using AI-powered and filtered search.
 
 import os
 import warnings
+import requests
+import hashlib
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -22,7 +24,7 @@ load_dotenv()
 app = Flask(__name__)
 
 # Configure CORS - allow requests from frontend
-CORS(app, origins=["http://localhost:8080", "http://127.0.0.1:8080"])
+CORS(app, origins=["http://localhost:8080", "http://127.0.0.1:8080", "http://localhost:5001"])
 
 # Initialize Supabase client
 DB_URL = os.getenv("DB_URL")
@@ -64,10 +66,259 @@ def safeInt(x, default=0):
         return default
 
 
-def sortDB(maximumPrice, maximumMileage, color, make, model, minYear, maxYear, carType):
+def get_car_image_url(make, model, year=None, color=None):
+    """
+    Fetch a car image using Pexels API (free, easy setup) or fallback to placeholder.
+    Returns image URL or default car image if not found.
+    
+    NOTE: This function is called only for the 10 cars returned from the database query,
+    not for all cars in the database. This ensures efficient image fetching.
+    
+    Setup: Get free API key from https://www.pexels.com/api/ (takes 30 seconds)
+    Add to .env: PEXELS_API_KEY=your_key_here
+    
+    Args:
+        make: Car manufacturer (e.g., "Toyota", "Ford")
+        model: Car model (e.g., "Camry", "F-150")
+        year: Car year (e.g., 2020)
+        color: Car color (optional, e.g., "red", "blue")
+    """
+    try:
+        # Clean and validate inputs
+        make = str(make).strip() if make else ""
+        model = str(model).strip() if model else ""
+        year = int(year) if year and str(year).isdigit() else None
+        color = str(color).strip().lower() if color else None
+        
+        # Skip if essential info is missing
+        if not make or not model:
+            print(f"Skipping image search - missing make or model: make={make}, model={model}")
+            return get_fallback_image(make, model, year)
+        
+        # Try Pexels API first (free, 200 requests/hour, easy signup)
+        # OPTIMIZED: Only try 1 query to conserve API calls, but make it VERY specific for cars only
+        pexels_key = os.getenv("PEXELS_API_KEY")
+        if pexels_key:
+            # Build ONLY the most specific query - ALWAYS include "car" and exclude motorcycles/models
+            # Format: "year make model color automobile car" - multiple car keywords to be explicit
+            best_query = None
+            if year and year > 0:
+                if color:
+                    # Most specific: year + make + model + color + multiple car keywords
+                    best_query = f"{year} {make} {model} {color} automobile car vehicle"
+                else:
+                    # Specific: year + make + model + multiple car keywords
+                    best_query = f"{year} {make} {model} automobile car vehicle"
+            else:
+                # Fallback: make + model + multiple car keywords (no year)
+                best_query = f"{make} {model} automobile car vehicle"
+            
+            # Only try ONE query to save API calls
+            try:
+                pexels_search = "https://api.pexels.com/v1/search"
+                headers = {"Authorization": pexels_key}
+                search_params = {
+                    "query": best_query,
+                    "per_page": 15,  # Get more results to filter from
+                    "orientation": "landscape"
+                }
+                
+                response = requests.get(pexels_search, params=search_params, headers=headers, timeout=3)
+                if response.status_code == 200:
+                    data = response.json()
+                    photos = data.get("photos", [])
+                    if photos and len(photos) > 0:
+                        # STRICT filtering: Only accept images that are clearly cars
+                        # Exclude: motorcycles, people/models, bikes, trucks (unless it's a pickup truck)
+                        car_photos = []
+                        exclude_keywords = ["motorcycle", "bike", "bicycle", "scooter", "model", "person", "people", "portrait", "fashion", "woman", "man", "girl", "boy"]
+                        
+                        for photo in photos:
+                            alt_text = photo.get("alt", "").lower()
+                            url = photo.get("url", "").lower()
+                            photographer = photo.get("photographer", "").lower()
+                            
+                            # Skip if it contains excluded keywords (motorcycles, people, etc.)
+                            if any(excluded in alt_text or excluded in url for excluded in exclude_keywords):
+                                continue
+                            
+                            # Must contain car-related keywords
+                            car_keywords = ["car", "automobile", "vehicle", "sedan", "suv", "coupe", "convertible", "hatchback", "sports car", "luxury car"]
+                            if any(keyword in alt_text for keyword in car_keywords):
+                                car_photos.append(photo)
+                            # Also accept if make/model is mentioned (likely a car)
+                            elif make.lower() in alt_text and model.lower() in alt_text:
+                                car_photos.append(photo)
+                        
+                        # Use car-specific photos if available
+                        if car_photos:
+                            photos_to_use = car_photos
+                        else:
+                            # If no strict matches, use all photos but log a warning
+                            photos_to_use = photos
+                            print(f"⚠️ No strict car matches for {make} {model}, using all results")
+                        
+                        # Use hash of make+model+year to consistently pick different images for different cars
+                        car_hash = int(hashlib.md5(f"{make}{model}{year}{color}".encode()).hexdigest(), 16)
+                        photo_index = car_hash % len(photos_to_use)
+                        image_url = photos_to_use[photo_index]["src"]["large"]
+                        print(f"✅ Found CAR image for {year} {make} {model} ({color or 'any color'}) using query: '{best_query}'")
+                        return image_url
+                elif response.status_code == 401:
+                    print(f"Pexels API key invalid. Check your PEXELS_API_KEY in .env")
+                elif response.status_code == 429:
+                    print(f"⚠️ Pexels rate limit reached. Using fallback images for remaining cars.")
+                else:
+                    print(f"Pexels API returned status {response.status_code} for query: '{best_query}'")
+            except requests.exceptions.Timeout:
+                print(f"Pexels API timeout for query: '{best_query}'")
+            except Exception as e:
+                print(f"Pexels API error for query '{best_query}': {e}")
+        
+        # Fallback to generic car images
+        return get_fallback_image(make, model, year)
+        
+    except Exception as e:
+        print(f"Error fetching car image for {make} {model}: {e}")
+        return get_fallback_image(make, model, year)
+
+
+def get_fallback_image(make, model, year):
+    """Get a fallback car image when API search fails."""
+    # Fallback: Use direct image URLs with more variety
+    # These are free stock car images that work without API calls
+    fallback_images = [
+        "https://images.pexels.com/photos/170811/pexels-photo-170811.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",  # BMW
+        "https://images.pexels.com/photos/116675/pexels-photo-116675.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",  # Red car
+        "https://images.pexels.com/photos/1592384/pexels-photo-1592384.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",  # White car
+        "https://images.pexels.com/photos/1149137/pexels-photo-1149137.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",  # Black car
+        "https://images.pexels.com/photos/164634/pexels-photo-164634.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",  # Sports car
+        "https://images.pexels.com/photos/3802508/pexels-photo-3802508.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",  # SUV
+        "https://images.pexels.com/photos/1545743/pexels-photo-1545743.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",  # Sedan
+        "https://images.pexels.com/photos/1719647/pexels-photo-1719647.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",  # Luxury car
+        "https://images.pexels.com/photos/358070/pexels-photo-358070.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",  # Convertible
+        "https://images.pexels.com/photos/210019/pexels-photo-210019.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",  # Classic car
+    ]
+    # Use a consistent fallback based on make/model/year hash for variety
+    car_hash = int(hashlib.md5(f"{make}{model}{year}".encode()).hexdigest(), 16)
+    selected_image = fallback_images[car_hash % len(fallback_images)]
+    print(f"⚠️ Using fallback image for {year} {make} {model} (no specific image found)")
+    return selected_image
+
+
+def format_car_results(cars):
+    """
+    Format car results by:
+    1. Filtering out 'gas' and 'unknown' values
+    2. Adding color hex code for visualization
+    3. Adding car image URLs
+    
+    IMPORTANT: This function should only be called on the limited results (max 10 cars)
+    returned from the database query, not on all cars in the database.
+    """
+    if not cars:
+        return []
+    
+    # Log how many cars we're processing (should be max 10)
+    print(f"Formatting {len(cars)} car(s) - fetching images for these cars only")
+    
+    formatted_cars = []
+    for car in cars:
+        if not isinstance(car, dict):
+            continue
+        
+        # Create a copy to avoid modifying original
+        formatted_car = car.copy()
+        
+        # Remove or filter out 'gas' and 'unknown' values
+        for key, value in formatted_car.items():
+            if isinstance(value, str):
+                value_lower = value.lower()
+                # Filter out 'gas' and 'unknown' - set to None or remove
+                if value_lower in ['gas', 'unknown', 'null', '']:
+                    formatted_car[key] = None
+                # Also filter if it's part of a field name (e.g., "fuel_type": "gas")
+                elif key.lower() in ['fuel', 'fuel_type', 'fueltype'] and value_lower == 'gas':
+                    formatted_car[key] = None
+        
+        # Add color hex code for visualization
+        if 'color' in formatted_car and formatted_car['color']:
+            formatted_car['colorHex'] = get_color_hex(formatted_car['color'])
+        else:
+            formatted_car['colorHex'] = None
+        
+        # Fetch and add car image URL (only for the cars being returned)
+        make = formatted_car.get('make', '')
+        model = formatted_car.get('model', '')
+        year = formatted_car.get('year')
+        color = formatted_car.get('color')
+        
+        if make and model:
+            # Only fetch image for this specific car (one of the 10 being returned)
+            # Pass color to help find more specific images
+            image_url = get_car_image_url(make, model, year, color)
+            formatted_car['imageUrl'] = image_url
+        else:
+            # Default car image if make/model not available
+            formatted_car['imageUrl'] = get_fallback_image(make or "car", model or "vehicle", year)
+        
+        formatted_cars.append(formatted_car)
+    
+    return formatted_cars
+
+
+def get_color_hex(color_name):
+    """Map color name to hex code for visualization."""
+    if not color_name:
+        return None
+    
+    color_map = {
+        'black': '#000000',
+        'white': '#FFFFFF',
+        'red': '#FF0000',
+        'blue': '#0000FF',
+        'green': '#008000',
+        'yellow': '#FFFF00',
+        'orange': '#FFA500',
+        'purple': '#800080',
+        'pink': '#FFC0CB',
+        'brown': '#A52A2A',
+        'beige': '#F5F5DC',
+        'gray': '#808080',
+        'grey': '#808080',
+        'silver': '#C0C0C0',
+        'gold': '#FFD700',
+        'tan': '#D2B48C',
+        'burgundy': '#800020',
+        'navy': '#000080',
+        'teal': '#008080',
+        'maroon': '#800000',
+    }
+    
+    color_lower = str(color_name).lower().strip()
+    # Check for exact match first
+    if color_lower in color_map:
+        return color_map[color_lower]
+    
+    # Check if color name contains any of the mapped colors
+    for mapped_color, hex_code in color_map.items():
+        if mapped_color in color_lower:
+            return hex_code
+    
+    # Default to a neutral gray if no match
+    return '#808080'
+
+
+def sortDB(maximumPrice, maximumMileage, color, make, model, minYear, maxYear, carType, return_has_more=False):
     """
     Query the database for cars matching the specified criteria.
     Returns up to 10 matching results.
+    
+    IMPORTANT: This function limits results to 10 cars BEFORE fetching images.
+    Images are only fetched for the 10 cars returned, not for all cars in the database.
+    
+    Args:
+        return_has_more: If True, returns tuple (results, has_more, total_count)
     """
     userDB = []
     
@@ -78,7 +329,7 @@ def sortDB(maximumPrice, maximumMileage, color, make, model, minYear, maxYear, c
     carType = carType.lower() if carType and carType.lower() not in ["null", "", None] else None
     
     # Build the query with filters
-    query = supabase.table('CarListings').select('*')
+    query = supabase.table('CarListings').select('*', count='exact')
     
     # Apply numeric filters
     if maximumPrice and maximumPrice > 0:
@@ -105,14 +356,24 @@ def sortDB(maximumPrice, maximumMileage, color, make, model, minYear, maxYear, c
             query_with_cartype = query.ilike('body_type', f'%{carType}%')
             response = query_with_cartype.limit(10).execute()
             if response.data and len(response.data) > 0:
-                return response.data
+                results = format_car_results(response.data)
+                if return_has_more:
+                    total_count = response.count if hasattr(response, 'count') else len(response.data)
+                    has_more = total_count > 10
+                    return results, has_more, total_count
+                return results
         except Exception as e:
             # If body_type fails, try carType column
             try:
                 query_with_cartype = query.ilike('carType', f'%{carType}%')
                 response = query_with_cartype.limit(10).execute()
                 if response.data and len(response.data) > 0:
-                    return response.data
+                    results = format_car_results(response.data)
+                    if return_has_more:
+                        total_count = response.count if hasattr(response, 'count') else len(response.data)
+                        has_more = total_count > 10
+                        return results, has_more, total_count
+                    return results
             except Exception as e2:
                 # If both fail, continue without carType filter
                 print(f"Warning: Could not filter by car type '{carType}', showing all types")
@@ -121,11 +382,21 @@ def sortDB(maximumPrice, maximumMileage, color, make, model, minYear, maxYear, c
     try:
         response = query.limit(10).execute()
         userDB = response.data if response.data else []
+        
+        # Check if there are more results
+        if return_has_more:
+            total_count = response.count if hasattr(response, 'count') else len(userDB)
+            has_more = total_count > 10
+            results = format_car_results(userDB)
+            return results, has_more, total_count
+        
+        # Format results: filter out 'gas'/'unknown', add color hex codes, and add images
+        return format_car_results(userDB)
     except Exception as e:
         print(f"Error querying database: {e}")
+        if return_has_more:
+            return [], False, 0
         return []
-    
-    return userDB
 
 
 def aiSearch(prompt):
@@ -199,7 +470,8 @@ def aiSearch(prompt):
         carType = parsed.get("Car type", "Null")
         
         # Search database with parsed parameters
-        results = sortDB(maximumPrice, maximumMileage, color, make, model, minYear, maxYear, carType)
+        # Note: aiSearch doesn't return has_more info, but the API endpoints will handle it
+        results = sortDB(maximumPrice, maximumMileage, color, make, model, minYear, maxYear, carType, return_has_more=False)
         return results
         
     except Exception as e:
@@ -240,12 +512,24 @@ def search():
         if isinstance(results, dict) and 'error' in results:
             return jsonify(results), 400
         
+        # For AI search, we can't easily get the total count without re-parsing
+        # So we'll check if we got exactly 10 results (likely means there are more)
+        has_more = len(results) == 10
+        total_count = len(results)
+        
         # Format response
-        return jsonify({
+        response_data = {
             "cars": results,
             "count": len(results),
-            "query": query
-        }), 200
+            "query": query,
+            "hasMore": has_more,
+            "totalCount": total_count
+        }
+        
+        if has_more:
+            response_data["message"] = "Showing 10 results. More cars available - search again to see more."
+        
+        return jsonify(response_data), 200
         
     except Exception as e:
         print(f"Error in /api/search: {e}")
@@ -298,13 +582,20 @@ def filtered_search():
         color = colors[0] if colors else None
         
         # Search database
-        results = sortDB(maximumPrice, maximumMileage, color, make, model, minYear, maxYear, carType)
+        results, has_more, total_count = sortDB(maximumPrice, maximumMileage, color, make, model, minYear, maxYear, carType, return_has_more=True)
         
         # Format response
-        return jsonify({
+        response_data = {
             "cars": results,
-            "count": len(results)
-        }), 200
+            "count": len(results),
+            "hasMore": has_more,
+            "totalCount": total_count
+        }
+        
+        if has_more:
+            response_data["message"] = f"Showing 10 of {total_count} results. Search again to see more cars."
+        
+        return jsonify(response_data), 200
         
     except Exception as e:
         print(f"Error in /api/search/filtered: {e}")
@@ -323,9 +614,12 @@ def get_cars():
         response = supabase.table('CarListings').select('*').limit(limit).execute()
         cars = response.data if response.data else []
         
+        # Format results: filter out 'gas'/'unknown', add color hex codes, and add images
+        formatted_cars = format_car_results(cars)
+        
         return jsonify({
-            "cars": cars,
-            "count": len(cars)
+            "cars": formatted_cars,
+            "count": len(formatted_cars)
         }), 200
         
     except Exception as e:
@@ -335,12 +629,12 @@ def get_cars():
 
 if __name__ == '__main__':
     print("🚀 Starting ReCarmend API Server...")
-    print("📡 API will be available at http://localhost:5000")
+    print("📡 API will be available at http://localhost:5001")
     print("📝 Endpoints:")
     print("   - POST /api/search - AI-powered search")
     print("   - POST /api/search/filtered - Filter-based search")
     print("   - GET /api/cars - Get all cars")
     print("   - GET /api/health - Health check")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5001)
 
 

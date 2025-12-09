@@ -13,7 +13,8 @@ import { searchCars, searchCarsWithFilters } from '@/services/api';
 
 const initialFilters: Filters = {
   bodyTypes: [],
-  makes: [],
+  makes: '',
+  models: '',
   minYear: '',
   maxYear: '',
   minPrice: '',
@@ -28,7 +29,10 @@ const Results = () => {
   const [query, setQuery] = useState(initialQuery);
   const [filters, setFilters] = useState<Filters>(initialFilters);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [cars, setCars] = useState<Car[]>([]);
+  const [lastId, setLastId] = useState<string | number | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -37,12 +41,12 @@ const Results = () => {
   // Load filters from URL params
   useEffect(() => {
     const bodyTypes = searchParams.get('bodyTypes')?.split(',').filter(Boolean) || [];
-    const makes = searchParams.get('makes')?.split(',').filter(Boolean) || [];
     const colors = searchParams.get('colors')?.split(',').filter(Boolean) || [];
     
     setFilters({
       bodyTypes,
-      makes,
+      makes: searchParams.get('makes')?.split(',').filter(Boolean).join(',') || '',
+      models: '',
       colors,
       minYear: searchParams.get('minYear') || '',
       maxYear: searchParams.get('maxYear') || '',
@@ -64,15 +68,21 @@ const Results = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const performSearch = async () => {
-    setIsLoading(true);
+  const performSearch = async (loadMore: boolean = false) => {
+    if (loadMore) {
+      setIsLoadingMore(true);
+    } else {
+      setIsLoading(true);
+      setCars([]); // Clear existing results on new search
+      setLastId(null); // Reset cursor
+    }
+
     try {
       let response;
       
       // Check if we have active filters
       const hasFilters = 
         filters.bodyTypes.length > 0 ||
-        filters.makes.length > 0 ||
         filters.colors.length > 0 ||
         filters.minYear ||
         filters.maxYear ||
@@ -80,17 +90,31 @@ const Results = () => {
         filters.maxPrice ||
         filters.maxMileage;
 
+      // Use last_id for pagination if loading more
+      const cursorId = loadMore ? lastId : null;
+
       if (hasFilters || !query.trim()) {
         // Use filtered search
-        response = await searchCarsWithFilters(filters, query.trim() || undefined);
+        response = await searchCarsWithFilters(filters, query.trim() || undefined, cursorId);
       } else {
         // Use AI search
-        response = await searchCars(query.trim(), filters);
+        response = await searchCars(query.trim(), filters, cursorId);
       }
 
-      setCars(response.cars);
+      if (loadMore) {
+        // Append new results to existing ones
+        setCars(prev => [...prev, ...response.cars]);
+      } else {
+        // Replace results with new search
+        setCars(response.cars);
+      }
+
+      // Update cursor for next page
+      setLastId(response.last_id || null);
+      // Check if there are more results (if we got 10 results, there might be more)
+      setHasMore(response.cars.length === 10 && response.last_id !== null);
       
-      if (response.cars.length === 0) {
+      if (!loadMore && response.cars.length === 0) {
         toast({
           title: "No results found",
           description: "Try adjusting your search criteria or filters.",
@@ -99,20 +123,36 @@ const Results = () => {
       }
     } catch (error) {
       console.error('Search error:', error);
-      toast({
-        title: "Search failed",
-        description: error instanceof Error ? error.message : "Could not fetch car listings. Please check if the backend is running.",
-        variant: "destructive",
-      });
-      setCars([]);
+      if (!loadMore) {
+        toast({
+          title: "Search failed",
+          description: error instanceof Error ? error.message : "Could not fetch car listings. Please check if the backend is running.",
+          variant: "destructive",
+        });
+        setCars([]);
+      } else {
+        toast({
+          title: "Failed to load more",
+          description: error instanceof Error ? error.message : "Could not load more results.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
+    }
+  };
+
+  const handleLoadMore = async () => {
+    if (!isLoadingMore && hasMore) {
+      await performSearch(true);
     }
   };
 
   const hasActiveFilters = 
     filters.bodyTypes.length > 0 ||
-    filters.makes.length > 0 ||
+    (filters.makes && filters.makes.trim()) ||
+    (filters.models && filters.models.trim()) ||
     filters.colors.length > 0 ||
     filters.minYear ||
     filters.maxYear ||
@@ -148,7 +188,6 @@ const Results = () => {
     const params = new URLSearchParams();
     if (query.trim()) params.set('q', query.trim());
     if (filters.bodyTypes.length > 0) params.set('bodyTypes', filters.bodyTypes.join(','));
-    if (filters.makes.length > 0) params.set('makes', filters.makes.join(','));
     if (filters.minYear) params.set('minYear', filters.minYear);
     if (filters.maxYear) params.set('maxYear', filters.maxYear);
     if (filters.minPrice) params.set('minPrice', filters.minPrice);
@@ -230,7 +269,7 @@ const Results = () => {
                 <p className="text-sm">Searching...</p>
               </div>
             ) : (
-              <p className="text-sm">{cars.length} cars found</p>
+              <p className="text-sm">{cars.length} {cars.length === 1 ? 'car' : 'cars'} found{hasMore && ' (more available)'}</p>
             )}
           </div>
         </div>
@@ -242,11 +281,36 @@ const Results = () => {
             <p className="text-muted-foreground">Searching for cars...</p>
           </div>
         ) : cars.length > 0 ? (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {cars.map((car, index) => (
-              <CarCard key={car.id} car={car} index={index} />
-            ))}
-          </div>
+          <>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {cars.map((car, index) => (
+                <CarCard key={car.id} car={car} index={index} />
+              ))}
+            </div>
+            {/* Load More Button */}
+            {hasMore && (
+              <div className="mt-8 text-center">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={handleLoadMore}
+                  disabled={isLoadingMore}
+                  className="min-w-[200px]"
+                >
+                  {isLoadingMore ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Loading more...
+                    </>
+                  ) : (
+                    <>
+                      Load More Cars
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="text-center py-16">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center">
