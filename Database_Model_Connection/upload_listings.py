@@ -155,3 +155,4 @@ def upload_all_listings(clear_table_flag: bool = True, reset_id: bool = True) ->
 
 if __name__ == "__main__":
     upload_all_listings()
+

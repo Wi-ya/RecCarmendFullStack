@@ -1,21 +1,11 @@
-"""
-Scraping Controller
-Orchestrates scraping operations using scrapers from the Webscraping module.
-This demonstrates how Controllers use the Scraper interface.
-"""
 import os
 import sys
 
-# Add parent directory to path to import from Webscraping
-parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
+from ..Webscraping.scraper_interface import Scraper
+from ..Webscraping.carpages_scraper import CarPagesScraper
 
-from Webscraping.scraper_interface import Scraper
-from Webscraping.carpages_scraper import CarPagesScraper
 # Future scrapers can be imported here:
-# from Webscraping.autotrader_scraper import AutoTraderScraper
-# from Webscraping.kijiji_scraper import KijijiScraper
+
 
 
 class ScrapingController:
@@ -26,12 +16,11 @@ class ScrapingController:
     """
     
     def __init__(self):
-        """Initialize the controller with available scrapers."""
+        """Initialize the controller with available scrapers. All scrapers are imported from the Webscraping module."""
         self.scrapers: dict[str, Scraper] = {
             "carpages": CarPagesScraper(),
-            # Add more scrapers here as they're implemented:
-            # "autotrader": AutoTraderScraper(),
-            # "kijiji": KijijiScraper(),
+            # Add more scrapers here if they're implemented
+            # Feature for extendibility and modularity.
         }
     
     def scrape_all_websites(self) -> None:
@@ -40,27 +29,24 @@ class ScrapingController:
         Each scraper creates CSV files directly - no return values.
         """
         for scraper_name, scraper in self.scrapers.items():
-            print(f"\n{'='*60}")
+
             print(f"Starting {scraper.get_scraper_name()} scraper...")
-            print(f"{'='*60}\n")
+  
             
             try:
                 scraper.scrapeWebsite()
-                print(f"\n✅ {scraper.get_scraper_name()} completed successfully")
+                print(f"{scraper.get_scraper_name()} completed successfully")
             except Exception as e:
-                print(f"\n❌ {scraper.get_scraper_name()} failed: {e}")
+                print(f"{scraper.get_scraper_name()} failed: {e}")
     
     def scrape_website(self, scraper_name: str) -> None:
         """
         Run a specific scraper by name.
         The scraper creates CSV files directly - no return value.
-        
-        Args:
-            scraper_name: Name of the scraper (e.g., "carpages")
         """
         if scraper_name not in self.scrapers:
-            print(f"❌ Scraper '{scraper_name}' not found.")
-            print(f"   Available scrapers: {', '.join(self.scrapers.keys())}")
+            print(f"Scraper '{scraper_name}' not found.")
+            print(f"Available scrapers: {', '.join(self.scrapers.keys())}")
             return
         
         scraper = self.scrapers[scraper_name]
@@ -68,9 +54,9 @@ class ScrapingController:
         
         try:
             scraper.scrapeWebsite()
-            print(f"\n✅ {scraper.get_scraper_name()} completed successfully")
+            print(f"{scraper.get_scraper_name()} completed successfully")
         except Exception as e:
-            print(f"\n❌ {scraper.get_scraper_name()} failed: {e}")
+            print(f"{scraper.get_scraper_name()} failed: {e}")
     
     def get_available_scrapers(self) -> list[str]:
         """Return list of available scraper names."""

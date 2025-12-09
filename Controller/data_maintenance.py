@@ -18,16 +18,17 @@ except ImportError:
     from scraping_controller import ScrapingController
 
 # Import upload function from Database_Model_Connection
-# Add parent directory to path to import from Database_Model_Connection
-sys.path.append(str(Path(__file__).parent.parent))
-try:
-    from Database_Model_Connection.upload_listings import upload_all_listings
-except ImportError:
-    # Fallback if running from different location
-    import os
-    db_conn_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Database_Model_Connection")
-    sys.path.append(db_conn_path)
-    from upload_listings import upload_all_listings
+# Use importlib to load from file path (handles directory names with underscores)
+import os
+import importlib.util
+_db_conn_path = Path(__file__).parent.parent / "Database_Model_Connection" / "upload_listings.py"
+if _db_conn_path.exists():
+    spec = importlib.util.spec_from_file_location("upload_listings", str(_db_conn_path))
+    upload_listings_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(upload_listings_module)
+    upload_all_listings = upload_listings_module.upload_all_listings
+else:
+    raise ImportError(f"Could not find upload_listings.py at {_db_conn_path}")
 
 
 class DataMaintenance:
