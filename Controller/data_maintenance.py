@@ -17,18 +17,14 @@ try:
 except ImportError:
     from scraping_controller import ScrapingController
 
-# Import upload function from Database_Model_Connection
-# Use importlib to load from file path (handles directory names with underscores)
-import os
-import importlib.util
-_db_conn_path = Path(__file__).parent.parent / "Database_Model_Connection" / "upload_listings.py"
+# Import SupabaseService from Database_Model_Connection
+import sys
+_db_conn_path = Path(__file__).parent.parent / "Database_Model_Connection"
 if _db_conn_path.exists():
-    spec = importlib.util.spec_from_file_location("upload_listings", str(_db_conn_path))
-    upload_listings_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(upload_listings_module)
-    upload_all_listings = upload_listings_module.upload_all_listings
+    sys.path.insert(0, str(_db_conn_path.parent))
+    from Database_Model_Connection import SupabaseService
 else:
-    raise ImportError(f"Could not find upload_listings.py at {_db_conn_path}")
+    raise ImportError(f"Could not find Database_Model_Connection at {_db_conn_path}")
 
 
 class DataMaintenance:
@@ -66,9 +62,10 @@ class DataMaintenance:
                 print("📤 Step 2: Uploading to Supabase...")
                 print(f"{'='*70}\n")
                 try:
-                    rows_uploaded = upload_all_listings(
-                        clear_table=True,  # Clear existing data
-                        reset_id_sequence=True  # Reset IDs to start from 1
+                    supabase_service = SupabaseService()
+                    rows_uploaded = supabase_service.upload_all_listings(
+                        clear_table_flag=True,  # Clear existing data
+                        reset_id=True  # Reset IDs to start from 1
                     )
                     print(f"\n✅ Upload completed: {rows_uploaded} rows uploaded to Supabase")
                 except Exception as upload_error:

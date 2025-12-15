@@ -4,8 +4,24 @@ Abstraction layer for database operations using Supabase.
 """
 
 import os
+import random
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from supabase import create_client, Client
+
+# Try to import psycopg2 for direct PostgreSQL connection
+try:
+    import psycopg2
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    PSYCOPG2_AVAILABLE = False
+
+# Try to import pandas for CSV reading
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
 
 
 class SupabaseService:
@@ -209,4 +225,171 @@ class SupabaseService:
             limit=10,
             return_has_more=return_has_more
         )
+    
+    def clear_table(self, table_name: str = 'CarListings') -> None:
+        """
+        Clear all data from the specified table.
+        
+        Args:
+            table_name: Name of the table to clear (default: 'CarListings')
+        """
+        print(f"Clearing table '{table_name}'...")
+        self.client.table(table_name).delete().neq('id', -1).execute()
+        print("✅ Table cleared")
+    
+    def reset_id_sequence(self, table_name: str = 'CarListings') -> None:
+        """
+        Reset the ID identity column to start from 1.
+        
+        Args:
+            table_name: Name of the table (default: 'CarListings')
+        
+        Raises:
+            ValueError: If DATABASE_URL not found or psycopg2 not available
+        """
+        print(f"Resetting ID sequence for '{table_name}'...")
+        
+        db_connection_string = os.getenv("DATABASE_URL")
+        if not db_connection_string:
+            raise ValueError("DATABASE_URL not found in .env - required for ID reset")
+        
+        if not PSYCOPG2_AVAILABLE:
+            raise ValueError("psycopg2 not available - install with: pip install psycopg2-binary")
+        
+        # Add SSL if not present
+        if 'sslmode=' not in db_connection_string:
+            separator = '&' if '?' in db_connection_string else '?'
+            db_connection_string = f"{db_connection_string}{separator}sslmode=require"
+        
+        # Connect and reset
+        conn = psycopg2.connect(db_connection_string)
+        cursor = conn.cursor()
+        
+        # Try identity column reset
+        cursor.execute(f'ALTER TABLE "{table_name}" ALTER COLUMN id RESTART WITH 1;')
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
+        print("✅ ID sequence reset to start from 1")
+    
+    def _prepare_data(self, file_path: Path) -> list:
+        """
+        Read CSV, clean data, and return records ready for upload.
+        
+        Args:
+            file_path: Path to CSV file
+        
+        Returns:
+            List of records ready for upload
+        
+        Raises:
+            ImportError: If pandas is not available
+        """
+        if not PANDAS_AVAILABLE:
+            raise ImportError("pandas not available - install with: pip install pandas")
+        
+        print(f"Reading {file_path}...")
+        df = pd.read_csv(file_path)
+        print(f"Loaded {len(df)} rows")
+        
+        # Clean data: replace "CALL" with 0
+        print("Cleaning data...")
+        if 'price' in df.columns:
+            df['price'] = df['price'].astype(str).str.upper().str.replace('CALL', '0', regex=False)
+            df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0).astype(int)
+        if 'mileage' in df.columns:
+            df['mileage'] = df['mileage'].astype(str).str.upper().str.replace('CALL', '0', regex=False)
+            df['mileage'] = pd.to_numeric(df['mileage'], errors='coerce').fillna(0).astype(int)
+        
+        # Handle NULLs
+        df = df.where(pd.notnull(df), None)
+        
+        # Remove auto-generated columns
+        auto_generated_columns = ['id', 'created_at', 'updated_at']
+        columns_to_drop = [col for col in auto_generated_columns if col in df.columns]
+        if columns_to_drop:
+            df = df.drop(columns=columns_to_drop)
+        
+        # Convert to records and randomize
+        records = df.to_dict(orient="records")
+        print("Randomizing record order...")
+        random.shuffle(records)
+        
+        return records
+    
+    def upload_data(self, table_name: str, records: list, chunk_size: int = 1000) -> int:
+        """
+        Upload records to Supabase in chunks.
+        
+        Args:
+            table_name: Name of the table to upload to
+            records: List of records to upload
+            chunk_size: Number of records per chunk (default: 1000)
+        
+        Returns:
+            Number of rows uploaded
+        """
+        total_rows = len(records)
+        print(f"Uploading {total_rows} rows to '{table_name}' (chunks of {chunk_size})...")
+        
+        uploaded = 0
+        for i in range(0, total_rows, chunk_size):
+            chunk = records[i:i + chunk_size]
+            self.client.table(table_name).insert(chunk).execute()
+            uploaded += len(chunk)
+            print(f"  Uploaded {uploaded}/{total_rows} rows...", end='\r')
+        
+        print(f"\n✅ Successfully uploaded {uploaded} rows")
+        return uploaded
+    
+    def upload_all_listings(
+        self, 
+        csv_file_path: Optional[Path] = None,
+        clear_table_flag: bool = True, 
+        reset_id: bool = True
+    ) -> int:
+        """
+        Main upload function: Clear → Reset ID → Upload.
+        Uploads data from all_listings.csv to CarListings table.
+        
+        Args:
+            csv_file_path: Path to CSV file. If None, uses default location (data/all_listings.csv)
+            clear_table_flag: Clear table before uploading (default: True)
+            reset_id: Reset ID sequence to start from 1 (default: True)
+        
+        Returns:
+            Number of rows uploaded
+        
+        Raises:
+            FileNotFoundError: If CSV file not found
+            ImportError: If pandas not available
+        """
+        # Determine file path
+        if csv_file_path is None:
+            # Default: look for data/all_listings.csv relative to project root
+            current_script_path = Path(__file__).resolve()
+            data_folder = current_script_path.parent.parent / "data"
+            csv_file_path = data_folder / "all_listings.csv"
+        
+        if not csv_file_path.exists():
+            raise FileNotFoundError(f"Could not find CSV file at: {csv_file_path}")
+        
+        table_name = 'CarListings'
+        
+        # Prepare data
+        records = self._prepare_data(csv_file_path)
+        
+        # Step 1: Clear table
+        if clear_table_flag:
+            self.clear_table(table_name)
+        
+        # Step 2: Reset ID sequence
+        if reset_id:
+            self.reset_id_sequence(table_name)
+        
+        # Step 3: Upload data
+        uploaded = self.upload_data(table_name, records)
+        
+        return uploaded
 

@@ -77,15 +77,24 @@ class CarPagesScraper {
     + get_scraper_name() : str
 }
 
-class AutoTraderScraper {
-    + scrapeWebsite() : void
-    + get_scraper_name() : str
+class ApplicationController {
+    - frontend_service : FrontendService
+    - backend_service : BackendService
+    - cohere_api : CohereAPI
+    - supabase_service : SupabaseService
+    - pexels_api : PexelsAPI
+    + __init__()
+    + initialize_services() : void
 }
 
 ' Relationships
 Scraper <|-- CarPagesScraper
-Scraper <|-- AutoTraderScraper
 ScrapingController "1" *-- "many" Scraper : uses
+ApplicationController "1" --> "1" FrontendService : uses
+ApplicationController "1" --> "1" BackendService : uses
+ApplicationController "1" --> "1" CohereAPI : uses
+ApplicationController "1" --> "1" SupabaseService : uses
+ApplicationController "1" --> "1" PexelsAPI : uses
 BackendService "1" --> "1" CohereAPI : uses
 BackendService "1" --> "1" SupabaseService : uses
 BackendService "1" --> "1" PexelsAPI : uses
@@ -97,13 +106,19 @@ note right of Scraper
 end note
 
 note right of BackendService
-  Orchestrates all services
+  Orchestrates Cohere, Supabase, Pexels
   Main business logic coordinator
 end note
 
 note right of FrontendService
   Represents React frontend
   For sequence diagram purposes
+end note
+
+note right of ApplicationController
+  Main application controller
+  Initializes all services
+  Represented by api_server.py
 end note
 
 @enduml
@@ -183,14 +198,23 @@ classDiagram
         +get_scraper_name() str
     }
     
-    class AutoTraderScraper {
-        +scrapeWebsite() void
-        +get_scraper_name() str
+    class ApplicationController {
+        -frontend_service: FrontendService
+        -backend_service: BackendService
+        -cohere_api: CohereAPI
+        -supabase_service: SupabaseService
+        -pexels_api: PexelsAPI
+        +__init__()
+        +initialize_services() void
     }
     
     Scraper <|-- CarPagesScraper : implements
-    Scraper <|-- AutoTraderScraper : implements
     ScrapingController *-- Scraper : uses
+    ApplicationController --> FrontendService : uses
+    ApplicationController --> BackendService : uses
+    ApplicationController --> CohereAPI : uses
+    ApplicationController --> SupabaseService : uses
+    ApplicationController --> PexelsAPI : uses
     BackendService --> CohereAPI : uses
     BackendService --> SupabaseService : uses
     BackendService --> PexelsAPI : uses
@@ -204,7 +228,7 @@ classDiagram
 - **Pattern**: Strategy Pattern / Interface Pattern
 - **Location**: `Webscraping/scraper_interface.py`
 - **Relationships**: 
-  - Parent of `CarPagesScraper` and `AutoTraderScraper`
+  - Parent of `CarPagesScraper`
 
 ### 2. FrontendService
 - **Purpose**: Represents frontend/UI component for sequence diagrams
@@ -243,17 +267,18 @@ classDiagram
 - **Location**: `Webscraping/carpages_scraper.py`
 - **Relationships**: Implements `Scraper` interface
 
-### 9. AutoTraderScraper
-- **Purpose**: Implements scraping for AutoTrader (template)
-- **Location**: `Webscraping/autotrader_scraper.py`
-- **Relationships**: Implements `Scraper` interface
+### 9. ApplicationController
+- **Purpose**: Main application controller that orchestrates all services
+- **Location**: Represented by `Controller/api_server.py` initialization
+- **Relationships**: Uses all service classes (FrontendService, BackendService, CohereAPI, SupabaseService, PexelsAPI)
 
 ## Relationships Summary
 
-1. **Inheritance**: `CarPagesScraper` and `AutoTraderScraper` inherit from `Scraper`
+1. **Inheritance**: `CarPagesScraper` inherits from `Scraper`
 2. **Composition**: `BackendService` composes `CohereAPI`, `SupabaseService`, and `PexelsAPI`
-3. **Aggregation**: `ScrapingController` aggregates multiple `Scraper` instances
-4. **Dependency**: `FrontendService` depends on `BackendService` (via HTTP calls)
+3. **Composition**: `ApplicationController` composes all service classes
+4. **Aggregation**: `ScrapingController` aggregates multiple `Scraper` instances
+5. **Dependency**: `FrontendService` depends on `BackendService` (via HTTP calls)
 
 ## Design Patterns Used
 

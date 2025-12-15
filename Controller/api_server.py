@@ -6,10 +6,21 @@ Uses object-oriented service layer for abstraction.
 """
 
 import os
+import sys
+from pathlib import Path
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
-from services import BackendService, CohereAPI, SupabaseService, PexelsAPI, FrontendService
+
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+# Import services from their respective locations
+from Cohere import CohereAPI
+from Pexels import PexelsAPI
+from Database_Model_Connection import SupabaseService
+from services import BackendService
 
 # Load environment variables
 load_dotenv()
@@ -23,24 +34,18 @@ CORS(app, origins=["http://localhost:8080", "http://127.0.0.1:8080", "http://loc
 # Initialize service layer
 print("Initializing service layer...")
 try:
-    # Initialize individual services
-    cohere_api = CohereAPI()
-    supabase_service = SupabaseService()
-    pexels_api = PexelsAPI()
-    frontend_service = FrontendService()  # Represents the frontend/UI component
-    
-    # Initialize main backend service that orchestrates all services
+    # Initialize individual services and pass them to BackendService
+    # BackendService will use these services - api_server doesn't need direct access
     backend_service = BackendService(
-        cohere_api=cohere_api,
-        supabase_service=supabase_service,
-        pexels_api=pexels_api
+        cohere_api=CohereAPI(),
+        supabase_service=SupabaseService(),
+        pexels_api=PexelsAPI()
     )
     print("✅ Service layer initialized successfully")
-    print(f"   - CohereAPI: {cohere_api.__class__.__name__}")
-    print(f"   - SupabaseService: {supabase_service.__class__.__name__}")
-    print(f"   - PexelsAPI: {pexels_api.__class__.__name__}")
-    print(f"   - FrontendService: {frontend_service.get_name()}")
     print(f"   - BackendService: {backend_service.__class__.__name__}")
+    print(f"   - CohereAPI: {backend_service.cohere_api.__class__.__name__}")
+    print(f"   - SupabaseService: {backend_service.supabase_service.__class__.__name__}")
+    print(f"   - PexelsAPI: {backend_service.pexels_api.__class__.__name__}")
 except Exception as e:
     raise ConnectionError(f"Failed to initialize service layer: {e}")
 

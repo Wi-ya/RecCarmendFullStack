@@ -1,11 +1,12 @@
 """
-Legacy main.py - Now just calls upload_listings.py
-This file is kept for backward compatibility.
-For new code, use upload_listings.py directly.
+Main entry point for uploading listings to Supabase.
+Uses SupabaseService to upload data.
 """
-from upload_listings import upload_all_listings
+from supabase_service import SupabaseService
 
 if __name__ == "__main__":
-    # Simply call the upload function
-    # This maintains backward compatibility while using the cleaner implementation
-    upload_all_listings()
+    # Create SupabaseService instance
+    supabase_service = SupabaseService()
+    
+    # Upload all listings
+    supabase_service.upload_all_listings()

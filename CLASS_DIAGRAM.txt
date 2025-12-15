@@ -13,15 +13,16 @@ CLASSES:
 └─────────────────────────────────────┘
                   ▲
                   │ (inherits)
-        ┌─────────┴─────────┐
-        │                   │
-┌───────┴────────┐  ┌──────┴───────────┐
-│ CarPagesScraper│  │ AutoTraderScraper│
-├────────────────┤  ├──────────────────┤
-│ + scrapeWebsite()│ │ + scrapeWebsite()│
-│ + get_scraper_  │ │ + get_scraper_   │
-│   name()        │ │   name()         │
-└────────────────┘  └──────────────────┘
+                  │
+        ┌─────────┘
+        │
+┌───────┴────────┐
+│ CarPagesScraper│
+├────────────────┤
+│ + scrapeWebsite()│
+│ + get_scraper_  │
+│   name()        │
+└────────────────┘
 
 
 ┌─────────────────────────────────────┐
@@ -99,6 +100,29 @@ CLASSES:
 
 
 ┌─────────────────────────────────────┐
+│ ApplicationController               │
+├─────────────────────────────────────┤
+│ - frontend_service: FrontendService │
+│ - backend_service: BackendService   │
+│ - cohere_api: CohereAPI             │
+│ - supabase_service: SupabaseService │
+│ - pexels_api: PexelsAPI             │
+├─────────────────────────────────────┤
+│ + __init__()                        │
+│ + initialize_services() : void      │
+└─────────────────────────────────────┘
+        │ (composition)
+        │
+        ├──────────┬──────────┬──────────┬──────────┐
+        │          │          │          │          │
+        ▼          ▼          ▼          ▼          ▼
+┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+│Frontend  │ │ Backend  │ │ Cohere   │ │Supabase  │ │ Pexels   │
+│Service   │ │ Service  │ │ API      │ │Service   │ │ API      │
+└──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘
+
+
+┌─────────────────────────────────────┐
 │ ScrapingController                  │
 ├─────────────────────────────────────┤
 │ - scrapers: dict[str, Scraper]      │
@@ -123,9 +147,13 @@ RELATIONSHIPS:
 
 1. Inheritance (▲):
    - CarPagesScraper extends Scraper
-   - AutoTraderScraper extends Scraper
 
 2. Composition (◆):
+   - ApplicationController contains FrontendService
+   - ApplicationController contains BackendService
+   - ApplicationController contains CohereAPI
+   - ApplicationController contains SupabaseService
+   - ApplicationController contains PexelsAPI
    - BackendService contains CohereAPI
    - BackendService contains SupabaseService
    - BackendService contains PexelsAPI
@@ -138,14 +166,14 @@ RELATIONSHIPS:
 
 5. Realization (▷):
    - CarPagesScraper implements Scraper interface
-   - AutoTraderScraper implements Scraper interface
 
 
 NOTES:
 ------
 
 - Scraper is an abstract base class (ABC) using Strategy Pattern
-- BackendService orchestrates all service classes
+- ApplicationController is the main entry point that initializes all services
+- BackendService orchestrates CohereAPI, SupabaseService, and PexelsAPI
 - FrontendService represents React frontend for architecture diagrams
 - All service classes follow dependency injection pattern
 - ScrapingController uses polymorphism to work with any Scraper implementation

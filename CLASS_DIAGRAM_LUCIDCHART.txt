@@ -1,0 +1,211 @@
+@startuml
+!theme plain
+
+' Car Hierarchy
+abstract class Car {
+  - make: str
+  - model: str
+  - year: int
+  - price: float
+  - mileage: int
+  - body_type: str
+  - color: str
+  - url: Optional[str]
+  + __init__(make, model, year, price, mileage, body_type, color, url)
+  + {abstract} get_fuel_type(): str
+  + to_dict(): Dict
+}
+
+class GasCar extends Car {
+  + get_fuel_type(): str
+}
+
+class ElectricCar extends Car {
+  - battery_range: Optional[int]
+  + __init__(*args, battery_range, **kwargs)
+  + get_fuel_type(): str
+}
+
+' Service Classes
+class CohereAPI {
+  - client: ClientV2
+  - api_key: str
+  + __init__(api_key: Optional[str])
+  + parse_car_query(user_prompt: str): Dict
+  - _extract_response_text(response): str
+  - _parse_response(raw_text: str): Dict
+}
+
+class PexelsAPI {
+  - api_key: str
+  - base_url: str
+  + __init__(api_key: Optional[str])
+  + get_car_image_url(make, model, year, color): str
+  + get_fallback_image(make, model, year): str
+  - _search_pexels(query: str): list
+  - _filter_car_photos(photos, make, model): list
+}
+
+class SupabaseService {
+  - client: Client
+  - db_url: str
+  + __init__(db_url: Optional[str], db_api_key: Optional[str])
+  + search_cars(maximum_price, maximum_mileage, color, make, model, min_year, max_year, car_type, limit, return_has_more): Tuple[List[Dict], bool, int]
+  + get_all_cars(limit: int): List[Dict]
+  + sortDB(...): Tuple[List[Dict], bool, int]
+  + clear_table(table_name: str): None
+  + reset_id_sequence(table_name: str): None
+  + upload_data(table_name: str, records: list, chunk_size: int): int
+  + upload_all_listings(csv_file_path: Optional[Path], clear_table_flag: bool, reset_id: bool): int
+  - _prepare_data(file_path: Path): list
+}
+
+class BackendService {
+  - cohere_api: CohereAPI
+  - supabase_service: SupabaseService
+  - pexels_api: PexelsAPI
+  + __init__(cohere_api, supabase_service, pexels_api)
+  + ai_search(user_query: str): Dict
+  + filtered_search(filters: Dict, return_has_more: bool): Tuple[List[Dict], bool, int]
+  + format_car_results(cars: List[Dict]): List[Dict]
+  + get_color_hex(color_name: str): Optional[str]
+  - _create_car_from_dict(car_dict: Dict): Car
+  - _safe_int(value, default): int
+}
+
+class FrontendService {
+  - api_url: str
+  - name: str
+  + __init__(api_url: str)
+  + search_cars(query, filters, last_id): Dict
+  + search_cars_with_filters(filters, query, last_id): Dict
+  + normalize_car(car: Dict): Dict
+  + render_car_cards(cars: List[Dict]): None
+  + get_name(): str
+}
+
+' Flask API Server
+class api_server {
+  - app: Flask
+  - backend_service: BackendService
+  + search(): Response
+  + filtered_search(): Response
+  + get_all_cars(): Response
+  + health_check(): Response
+}
+
+' Webscraping Classes
+abstract class Scraper {
+  + {abstract} scrapeWebsite(): None
+  + {abstract} get_scraper_name(): str
+}
+
+class CarPagesScraper extends Scraper {
+  - data_dir: str
+  - driver: WebDriver
+  - all_rows: list
+  - category_rows: defaultdict
+  + __init__(data_dir: Optional[str])
+  + scrapeWebsite(): None
+  + get_scraper_name(): str
+  - _create_driver(): WebDriver
+  - _scrape_carpages_ca(): None
+  - _navigate_category(category_url: str): None
+  - _navigate_page(body_type: str): None
+  - _extract_data_from_listing(car_listing, body_type: str): None
+  - _normalize_color(raw_color: str): str
+  - _cookie_handler(driver: WebDriver): None
+  - _no_location_options(): None
+  - _bypass_captcha(driver: WebDriver): None
+  - _write_rows_to_csv(rows: list, filepath: str): None
+  - _save_to_csv(): None
+}
+
+class ScrapingController {
+  - scrapers: dict[str, Scraper]
+  + __init__()
+  + scrape_all_websites(): None
+  + scrape_website(scraper_name: str): None
+  + get_available_scrapers(): list[str]
+}
+
+class DataMaintenance {
+  - controller: ScrapingController
+  - last_run: Optional[datetime]
+  + __init__()
+  + run_weekly_update(upload_to_supabase: bool): None
+  + schedule_weekly_updates(day_of_week: str, time: str): None
+  + run_scheduler(): None
+  + run_manual_update(upload_to_supabase: bool): None
+}
+
+' Relationships
+BackendService "uses" --> CohereAPI : composition
+BackendService "uses" --> SupabaseService : composition
+BackendService "uses" --> PexelsAPI : composition
+BackendService "creates" --> Car : factory method
+BackendService "creates" --> GasCar
+BackendService "creates" --> ElectricCar
+
+api_server "uses" --> BackendService : composition
+
+' Frontend receives responses from backend
+api_server ..> FrontendService : sends responses
+
+' Webscraping relationships
+CarPagesScraper --|> Scraper : implements
+ScrapingController "uses" --> Scraper : composition
+DataMaintenance "uses" --> ScrapingController : composition
+DataMaintenance "uses" --> SupabaseService : uploads data
+
+GasCar --|> Car : extends
+ElectricCar --|> Car : extends
+
+note right of Car
+  Abstract base class
+  Polymorphism via get_fuel_type()
+end note
+
+note right of BackendService
+  Orchestrates all services
+  Creates Car objects via factory
+end note
+
+note right of api_server
+  Flask application
+  Initializes all services
+  Defines API endpoints
+  Sends responses to Frontend
+end note
+
+note right of FrontendService
+  Represents Frontend/View component
+  Actual implementation in TypeScript/React
+  Receives data from api_server
+end note
+
+note right of Scraper
+  Abstract base class for scrapers
+  Strategy Pattern implementation
+  Polymorphism via scrapeWebsite()
+end note
+
+note right of ScrapingController
+  Manages all scraper instances
+  Uses Scraper interface for extensibility
+end note
+
+note right of DataMaintenance
+  Schedules and runs scraping tasks
+  Coordinates scraping and database upload
+  Uses schedule library for timing
+end note
+
+note right of CarPagesScraper
+  Implements Scraper interface
+  Scrapes carpages.ca website
+  Saves data to CSV files
+end note
+
+@enduml
+

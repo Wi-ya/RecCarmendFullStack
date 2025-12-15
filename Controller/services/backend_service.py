@@ -4,10 +4,16 @@ Main service class that orchestrates all external services for car search operat
 """
 
 import hashlib
+import sys
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from .cohere_service import CohereAPI
-from .pexels_service import PexelsAPI
-from .supabase_service import SupabaseService
+
+# Import services from their respective locations
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from Cohere import CohereAPI
+from Pexels import PexelsAPI
+from Database_Model_Connection import SupabaseService
+from .models import Car, GasCar, ElectricCar
 
 
 class BackendService:
@@ -140,12 +146,53 @@ class BackendService:
         else:
             return formatted_results
     
+    def _create_car_from_dict(self, car_dict: Dict) -> Car:
+        """
+        Factory method to create appropriate Car object from dictionary.
+        Uses body_type to determine if car is Electric or Gas.
+        
+        Classification logic:
+        - If body_type contains "hybrid" or "electric" → ElectricCar
+        - Otherwise → GasCar
+        
+        Args:
+            car_dict: Dictionary containing car data from database
+        
+        Returns:
+            Car instance (GasCar or ElectricCar)
+        """
+        body_type = car_dict.get("body_type") or car_dict.get("bodyType") or car_dict.get("carType") or ""
+        body_type_lower = str(body_type).lower()
+        
+        # Determine if car is electric/hybrid based on body_type
+        is_electric = "hybrid" in body_type_lower or "electric" in body_type_lower
+        
+        # Extract common attributes
+        car_data = {
+            "make": car_dict.get("make", "Unknown"),
+            "model": car_dict.get("model", "Unknown"),
+            "year": int(car_dict.get("year", 0)) if car_dict.get("year") else 0,
+            "price": float(car_dict.get("price", 0)) if car_dict.get("price") else 0.0,
+            "mileage": int(car_dict.get("mileage", 0)) if car_dict.get("mileage") else 0,
+            "body_type": body_type or "Unknown",
+            "color": car_dict.get("color", "Unknown"),
+            "url": car_dict.get("url") or car_dict.get("listing_url")
+        }
+        
+        # Create appropriate car type
+        if is_electric:
+            battery_range = car_dict.get("battery_range") or car_dict.get("batteryRange")
+            return ElectricCar(battery_range=battery_range, **car_data)
+        else:
+            return GasCar(**car_data)
+    
     def format_car_results(self, cars: List[Dict]) -> List[Dict]:
         """
         Format car results by:
-        1. Filtering out 'gas' and 'unknown' values
-        2. Adding color hex code for visualization
-        3. Adding car image URLs
+        1. Creating Car objects (GasCar or ElectricCar) from dictionaries
+        2. Using polymorphic get_fuel_type() to determine fuel type (Gas vs Electric/Hybrid)
+        3. Adding color hex code for visualization
+        4. Adding car image URLs
         
         IMPORTANT: This function should only be called on the limited results (max 10 cars)
         returned from the database query, not on all cars in the database.
@@ -154,57 +201,71 @@ class BackendService:
             cars: List of car dictionaries from database
         
         Returns:
-            List of formatted car dictionaries
+            List of formatted car dictionaries with fuelType from polymorphism
         """
         if not cars:
             return []
         
-        print(f"Formatting {len(cars)} car(s) - fetching images for these cars only")
+        print(f"Formatting {len(cars)} car(s) - creating Car objects with polymorphic fuel types")
         
         formatted_cars = []
         for car in cars:
             if not isinstance(car, dict):
                 continue
             
-            # Create a copy to avoid modifying original
-            formatted_car = car.copy()
-            
-            # Remove or filter out 'gas' and 'unknown' values
-            for key, value in formatted_car.items():
-                if isinstance(value, str):
-                    value_lower = value.lower()
-                    # Filter out 'gas' and 'unknown' - set to None or remove
-                    if value_lower in ['gas', 'unknown', 'null', '']:
-                        formatted_car[key] = None
-                    # Also filter if it's part of a field name (e.g., "fuel_type": "gas")
-                    elif key.lower() in ['fuel', 'fuel_type', 'fueltype'] and value_lower == 'gas':
-                        formatted_car[key] = None
-            
-            # Add color hex code for visualization
-            if 'color' in formatted_car and formatted_car['color']:
-                formatted_car['colorHex'] = self.get_color_hex(formatted_car['color'])
-            else:
-                formatted_car['colorHex'] = None
-            
-            # Fetch and add car image URL (only for the cars being returned)
-            make = formatted_car.get('make', '')
-            model = formatted_car.get('model', '')
-            year = formatted_car.get('year')
-            color = formatted_car.get('color')
-            
-            if make and model:
-                # Only fetch image for this specific car (one of the 10 being returned)
-                image_url = self.pexels_api.get_car_image_url(make, model, year, color)
-                formatted_car['imageUrl'] = image_url
-            else:
-                # Default car image if make/model not available
-                formatted_car['imageUrl'] = self.pexels_api.get_fallback_image(
-                    make or "car", 
-                    model or "vehicle", 
-                    year
-                )
-            
-            formatted_cars.append(formatted_car)
+            try:
+                # Create Car object (GasCar or ElectricCar) using factory
+                car_obj = self._create_car_from_dict(car)
+                
+                # Convert to dict - uses polymorphic get_fuel_type() (Gas vs Electric/Hybrid)
+                formatted_car = car_obj.to_dict()
+                
+                # Add color hex code for visualization
+                if formatted_car.get('color'):
+                    formatted_car['colorHex'] = self.get_color_hex(formatted_car['color'])
+                else:
+                    formatted_car['colorHex'] = None
+                
+                # Fetch and add car image URL
+                make = formatted_car.get('make', '')
+                model = formatted_car.get('model', '')
+                year = formatted_car.get('year')
+                color = formatted_car.get('color')
+                
+                if make and model:
+                    image_url = self.pexels_api.get_car_image_url(make, model, year, color)
+                    formatted_car['imageUrl'] = image_url
+                    formatted_car['image'] = image_url
+                else:
+                    fallback_url = self.pexels_api.get_fallback_image(
+                        make or "car", 
+                        model or "vehicle", 
+                        year
+                    )
+                    formatted_car['imageUrl'] = fallback_url
+                    formatted_car['image'] = fallback_url
+                
+                formatted_cars.append(formatted_car)
+                
+            except Exception as e:
+                print(f"Error creating Car object for {car.get('make', 'Unknown')} {car.get('model', 'Unknown')}: {e}")
+                # Fallback: use original dict
+                formatted_car = car.copy()
+                formatted_car['colorHex'] = self.get_color_hex(formatted_car.get('color'))
+                
+                # Still add image URL
+                make = formatted_car.get('make', '')
+                model = formatted_car.get('model', '')
+                year = formatted_car.get('year')
+                color = formatted_car.get('color')
+                if make and model:
+                    formatted_car['imageUrl'] = self.pexels_api.get_car_image_url(make, model, year, color)
+                    formatted_car['image'] = formatted_car['imageUrl']
+                else:
+                    fallback_url = self.pexels_api.get_fallback_image(make or "car", model or "vehicle", year)
+                    formatted_car['imageUrl'] = fallback_url
+                    formatted_car['image'] = fallback_url
+                formatted_cars.append(formatted_car)
         
         return formatted_cars
     
