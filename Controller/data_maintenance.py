@@ -25,9 +25,9 @@ try:
     from Controller.scraping_controller import ScrapingController
 except ImportError:
     try:
-        from .scraping_controller import ScrapingController
-    except ImportError:
-        from scraping_controller import ScrapingController
+    from .scraping_controller import ScrapingController
+except ImportError:
+    from scraping_controller import ScrapingController
 
 # Import SupabaseService from Database_Model_Connection
 from Database_Model_Connection import SupabaseService
@@ -145,7 +145,7 @@ def main():
         print("📥 Step 1: Scraping carpages.ca...")
         maintenance.controller.scrape_website("carpages")
         print("\n✅ Scraping completed successfully")
-        
+    
         # Step 2: Upload to Supabase
         print(f"\n{'='*70}")
         print("📤 Step 2: Uploading to Supabase...")

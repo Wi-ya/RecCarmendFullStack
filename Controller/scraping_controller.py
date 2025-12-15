@@ -12,8 +12,8 @@ try:
     from Webscraping.carpages_scraper import CarPagesScraper
 except ImportError:
     try:
-        from ..Webscraping.scraper_interface import Scraper
-        from ..Webscraping.carpages_scraper import CarPagesScraper
+from ..Webscraping.scraper_interface import Scraper
+from ..Webscraping.carpages_scraper import CarPagesScraper
     except ImportError:
         raise ImportError("Could not import Webscraping module. Make sure the project structure is correct.")
 
