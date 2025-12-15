@@ -16,6 +16,7 @@ export interface Car {
   color: string;
   image: string;
   location: string;
+  url?: string;
   colorHex?: string | null; // Hex color code for color indicator
 }
 
@@ -132,9 +133,19 @@ export function CarCard({ car, index }: CarCardProps) {
             )}
             <span>{car.color}</span>
           </Badge>
-          <Button variant="default" size="sm">
-            View Details
-          </Button>
+          {car.url ? (
+            <Button 
+              variant="default" 
+              size="sm"
+              onClick={() => window.open(car.url, '_blank', 'noopener,noreferrer')}
+            >
+              View Details
+            </Button>
+          ) : (
+            <Button variant="default" size="sm" disabled>
+              View Details
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

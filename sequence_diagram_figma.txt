@@ -1,21 +1,22 @@
 SEQUENCE DIAGRAM FOR FIGMA
 ==========================
 
+Actors:
+-------
+1. User (actor - stick figure icon, no lifeline)
+
 Components (with lifelines):
 ----------------------------
-1. User (lifeline spans entire diagram)
-2. Frontend (React/Vite)
-3. Backend (Flask API)
-4. Cohere AI (NLP)
-5. Supabase (Database)
-6. Pexels API (Images)
+1. Frontend (React/Vite)
+2. Backend (Flask API)
+3. Cohere AI (NLP)
+4. Supabase (Database)
+5. Pexels API (Images)
 
 MAIN SEARCH FLOW:
 -----------------
 
-[User lifeline active throughout - vertical line from top to bottom]
-
-Step 1: User → Frontend (solid arroaw)
+Step 1: User → Frontend (solid arrow)
    Function Call: searchCars(query: string)
    Location: View/src/services/api.ts
    Parameter: "red SUV under $30k"
@@ -102,12 +103,12 @@ Step 11: Frontend → Frontend (self-call, solid arrow)
    - Update React state
    [Frontend activation continues]
    
-Step 12: Frontend → User (DOTTED arrow - return/display)
-   Return Function: render CarCard[]
+Step 12: Frontend displays results (END - no return arrow)
+   Function Call: render CarCard[]
    Component: CarCard.tsx
    Display: Car cards with images, details, and filters
    [Deactivate Frontend - vertical bar ends]
-   [User lifeline continues - can make another search]
+   [Flow ends here - User views results in Frontend UI]
 
 FILTER-BASED SEARCH FLOW:
 -------------------------
@@ -172,18 +173,21 @@ Step 9: Frontend → Frontend (self-call, solid arrow)
    - Normalize car structure
    [Frontend activation continues]
    
-Step 10: Frontend → User (DOTTED arrow - return/display)
-   Return Function: render CarCard[]
+Step 10: Frontend displays results (END - no return arrow)
+   Function Call: render CarCard[]
    Component: CarCard.tsx
    Display: Filtered car results with images
    [Deactivate Frontend - vertical bar ends]
-   [User lifeline continues]
+   [Flow ends here - User views results in Frontend UI]
 
 NOTES FOR FIGMA:
 ---------------
-- Use rectangles for components
+- Use stick figure icon for User (actor, not a component)
+- Use rectangles for components (Frontend, Backend, etc.)
 - Use solid arrows (→) for function calls
-- Use dotted arrows (-->>) for return values
+- Use dotted arrows (-->>) for return values (but NOT back to User)
+- Flow ends at Frontend - no return arrows to User
+- User views results through Frontend UI (no arrow needed)
 - Label arrows with function names and parameters
 - Use different colors for request/response
 - Add activation boxes (vertical bars) on components during processing

@@ -1,0 +1,152 @@
+CLASS DIAGRAM FOR RECCARMEND SYSTEM
+=====================================
+
+CLASSES:
+--------
+
+┌─────────────────────────────────────┐
+│ <<abstract>>                        │
+│ Scraper                             │
+├─────────────────────────────────────┤
+│ + scrapeWebsite() : void            │
+│ + get_scraper_name() : str          │
+└─────────────────────────────────────┘
+                  ▲
+                  │ (inherits)
+        ┌─────────┴─────────┐
+        │                   │
+┌───────┴────────┐  ┌──────┴───────────┐
+│ CarPagesScraper│  │ AutoTraderScraper│
+├────────────────┤  ├──────────────────┤
+│ + scrapeWebsite()│ │ + scrapeWebsite()│
+│ + get_scraper_  │ │ + get_scraper_   │
+│   name()        │ │   name()         │
+└────────────────┘  └──────────────────┘
+
+
+┌─────────────────────────────────────┐
+│ FrontendService                     │
+├─────────────────────────────────────┤
+│ - api_url: str                      │
+│ - name: str                         │
+├─────────────────────────────────────┤
+│ + __init__(api_url: str)            │
+│ + search_cars(query: str, ...)      │
+│   : Dict[str, Any]                  │
+│ + search_cars_with_filters(...)     │
+│   : Dict[str, Any]                  │
+│ + normalize_car(car: Dict) : Dict   │
+│ + render_car_cards(cars: List)      │
+│   : void                            │
+│ + get_name() : str                  │
+└─────────────────────────────────────┘
+        │ (HTTP calls)
+        │
+        ▼
+┌─────────────────────────────────────┐
+│ BackendService                      │
+├─────────────────────────────────────┤
+│ - cohere_api: CohereAPI             │
+│ - supabase_service: SupabaseService │
+│ - pexels_api: PexelsAPI             │
+├─────────────────────────────────────┤
+│ + __init__(cohere_api,              │
+│           supabase_service,         │
+│           pexels_api)               │
+│ + ai_search(user_query: str) : Dict │
+│ + filtered_search(filters: Dict,    │
+│                   return_has_more:  │
+│                   bool)              │
+│   : Tuple[List[Dict], bool, int]    │
+│ + format_car_results(cars: List)    │
+│   : List[Dict]                      │
+│ + get_color_hex(color_name: str)    │
+│   : Optional[str]                   │
+│ - _safe_int(value, default: int)    │
+│   : int                             │
+└─────────────────────────────────────┘
+        │ (composition)
+        │
+        ├──────────────────┬──────────────────┐
+        │                  │                  │
+        ▼                  ▼                  ▼
+┌──────────────┐  ┌──────────────────┐  ┌─────────────┐
+│ CohereAPI    │  │ SupabaseService  │  │ PexelsAPI   │
+├──────────────┤  ├──────────────────┤  ├─────────────┤
+│ - client:    │  │ - client: Client │  │ - api_key:  │
+│   ClientV2   │  │ - db_url: str    │  │   Optional  │
+│ - api_key:   │  │                  │  │ - base_url: │
+│   str        │  │                  │  │   str       │
+├──────────────┤  ├──────────────────┤  ├─────────────┤
+│ + __init__   │  │ + __init__       │  │ + __init__  │
+│   (api_key)  │  │   (db_url,       │  │   (api_key) │
+│ + parse_car_ │  │    db_api_key)   │  │ + get_car_  │
+│   query(...) │  │ + search_cars    │  │   image_url │
+│   : Dict     │  │   (...)          │  │   (...)     │
+│ - _extract_  │  │ + sortDB(...)    │  │   : str     │
+│   response_  │  │ + get_all_cars   │  │ + get_      │
+│   text(...)  │  │   (limit)        │  │   fallback_ │
+│   : str      │  │                  │  │   image(...)│
+│ - _parse_    │  │                  │  │   : str     │
+│   response   │  │                  │  │ - _search_  │
+│   (...) :    │  │                  │  │   pexels    │
+│   Dict       │  │                  │  │   (...)     │
+└──────────────┘  └──────────────────┘  │ - _filter_  │
+                                        │   car_      │
+                                        │   photos    │
+                                        │   (...)     │
+                                        └─────────────┘
+
+
+┌─────────────────────────────────────┐
+│ ScrapingController                  │
+├─────────────────────────────────────┤
+│ - scrapers: dict[str, Scraper]      │
+├─────────────────────────────────────┤
+│ + __init__()                        │
+│ + scrape_all_websites() : void      │
+│ + scrape_website(scraper_name: str) │
+│   : void                            │
+│ + get_available_scrapers()          │
+│   : list[str]                       │
+└─────────────────────────────────────┘
+        │ (aggregation)
+        │
+        ▼
+┌─────────────────────────────────────┐
+│ Scraper (interface)                 │
+└─────────────────────────────────────┘
+
+
+RELATIONSHIPS:
+--------------
+
+1. Inheritance (▲):
+   - CarPagesScraper extends Scraper
+   - AutoTraderScraper extends Scraper
+
+2. Composition (◆):
+   - BackendService contains CohereAPI
+   - BackendService contains SupabaseService
+   - BackendService contains PexelsAPI
+
+3. Aggregation (◇):
+   - ScrapingController uses Scraper instances
+
+4. Dependency (→):
+   - FrontendService depends on BackendService (via HTTP)
+
+5. Realization (▷):
+   - CarPagesScraper implements Scraper interface
+   - AutoTraderScraper implements Scraper interface
+
+
+NOTES:
+------
+
+- Scraper is an abstract base class (ABC) using Strategy Pattern
+- BackendService orchestrates all service classes
+- FrontendService represents React frontend for architecture diagrams
+- All service classes follow dependency injection pattern
+- ScrapingController uses polymorphism to work with any Scraper implementation
+
