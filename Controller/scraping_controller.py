@@ -1,8 +1,21 @@
 import os
 import sys
+from pathlib import Path
 
-from ..Webscraping.scraper_interface import Scraper
-from ..Webscraping.carpages_scraper import CarPagesScraper
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+# Import scrapers - works both as module and script
+try:
+    from Webscraping.scraper_interface import Scraper
+    from Webscraping.carpages_scraper import CarPagesScraper
+except ImportError:
+    try:
+        from ..Webscraping.scraper_interface import Scraper
+        from ..Webscraping.carpages_scraper import CarPagesScraper
+    except ImportError:
+        raise ImportError("Could not import Webscraping module. Make sure the project structure is correct.")
 
 # Future scrapers can be imported here:
 

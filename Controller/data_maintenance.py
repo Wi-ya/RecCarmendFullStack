@@ -5,26 +5,32 @@ This module is responsible for running scrapers on a schedule (e.g., weekly).
 Uses ScrapingController to perform the actual scraping operations.
 After scraping, uploads data to Supabase with randomized order.
 """
-import schedule
 import time
 import sys
 from pathlib import Path
 from datetime import datetime
 
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+# Optional import for scheduling (only needed for scheduled tasks)
+try:
+    import schedule  # type: ignore
+except ImportError:
+    schedule = None  # type: ignore
+
 # Import ScrapingController - works both as module and script
 try:
-    from .scraping_controller import ScrapingController
+    from Controller.scraping_controller import ScrapingController
 except ImportError:
-    from scraping_controller import ScrapingController
+    try:
+        from .scraping_controller import ScrapingController
+    except ImportError:
+        from scraping_controller import ScrapingController
 
 # Import SupabaseService from Database_Model_Connection
-import sys
-_db_conn_path = Path(__file__).parent.parent / "Database_Model_Connection"
-if _db_conn_path.exists():
-    sys.path.insert(0, str(_db_conn_path.parent))
-    from Database_Model_Connection import SupabaseService
-else:
-    raise ImportError(f"Could not find Database_Model_Connection at {_db_conn_path}")
+from Database_Model_Connection import SupabaseService
 
 
 class DataMaintenance:
@@ -89,6 +95,8 @@ class DataMaintenance:
             day_of_week: Day of the week to run updates (e.g., "monday", "sunday")
             time: Time of day to run updates (e.g., "09:00", "14:30")
         """
+        if schedule is None:
+            raise ImportError("The 'schedule' module is required for scheduling. Install it with: pip install schedule")
         # Schedule weekly updates
         getattr(schedule.every(), day_of_week.lower()).at(time).do(self.run_weekly_update)
         print(f"📅 Scheduled weekly updates: Every {day_of_week} at {time}")
@@ -98,6 +106,8 @@ class DataMaintenance:
         Run the scheduler continuously.
         This method blocks and runs the scheduled tasks.
         """
+        if schedule is None:
+            raise ImportError("The 'schedule' module is required for scheduling. Install it with: pip install schedule")
         print("🚀 Data maintenance scheduler started")
         print("Press Ctrl+C to stop\n")
         
@@ -122,18 +132,36 @@ class DataMaintenance:
 def main():
     """
     Main entry point for data maintenance.
-    Can be run as a scheduled task or daemon.
+    Runs manual scraping of carpages.ca and uploads to Supabase.
     """
     maintenance = DataMaintenance()
     
-    # Schedule weekly updates (every Monday at 9:00 AM)
-    maintenance.schedule_weekly_updates(day_of_week="monday", time="09:00")
+    print(f"\n{'='*70}")
+    print(f"🔧 Manual scrape of carpages.ca - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"{'='*70}\n")
     
-    # Option 1: Run scheduler continuously (for long-running processes)
-    maintenance.run_scheduler()
-    
-    # Option 2: Run a one-time update (uncomment to use instead)
-    # maintenance.run_manual_update()
+    try:
+        # Step 1: Scrape carpages.ca
+        print("📥 Step 1: Scraping carpages.ca...")
+        maintenance.controller.scrape_website("carpages")
+        print("\n✅ Scraping completed successfully")
+        
+        # Step 2: Upload to Supabase
+        print(f"\n{'='*70}")
+        print("📤 Step 2: Uploading to Supabase...")
+        print(f"{'='*70}\n")
+        rows_uploaded = maintenance.supabase_service.upload_all_listings(
+            clear_table_flag=True,
+            reset_id=True
+        )
+        print(f"\n✅ Upload completed: {rows_uploaded} rows uploaded to Supabase")
+        
+        print(f"\n{'='*70}")
+        print(f"✅ Manual scrape completed successfully at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*70}\n")
+    except Exception as e:
+        print(f"\n❌ Scraping failed: {e}")
+        raise
 
 
 if __name__ == "__main__":
