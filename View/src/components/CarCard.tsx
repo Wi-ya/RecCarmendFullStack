@@ -143,8 +143,8 @@ export function CarCard({ car, index }: CarCardProps) {
             </Button>
           ) : (
             <Button variant="default" size="sm" disabled>
-              View Details
-            </Button>
+            View Details
+          </Button>
           )}
         </div>
       </CardContent>

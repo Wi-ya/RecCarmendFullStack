@@ -16,4 +16,3 @@ Frontend React application (user interface).
 - Displays the car search interface
 - Sends search queries to the backend API
 - Shows car results in cards
-- Handles user authentication

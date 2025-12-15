@@ -9,5 +9,5 @@ Web scraping module for collecting car listings.
 **What it does:**
 - Scrapes car listings from websites (CarPages.ca)
 - Saves data to CSV files in the `data/` folder
-- Uses Selenium for browser automation
+- Uses Selenium for browser automation and moving through pages and categories
 - Extensible design for adding more scrapers

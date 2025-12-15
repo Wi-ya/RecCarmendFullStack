@@ -1,12 +1,12 @@
 # Cohere
 
-Cohere AI API service wrapper.
+Cohere AI API service folder.
 
 **Main Files:**
 - `cohere_service.py` - Cohere API client
 
 **What it does:**
-- Parses natural language car search queries
+- Parses the users natural language
 - Extracts search parameters (make, model, price, etc.)
-- Uses Cohere's AI to understand user intent
+- Uses Cohere's AI to change user's text prompt into a filter that our program can use to select cars
 
