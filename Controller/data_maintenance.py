@@ -36,6 +36,7 @@ class DataMaintenance:
     def __init__(self):
         """Initialize the data maintenance scheduler."""
         self.controller = ScrapingController()
+        self.supabase_service = SupabaseService()
         self.last_run: datetime | None = None
     
     def run_weekly_update(self, upload_to_supabase: bool = True) -> None:
@@ -62,8 +63,7 @@ class DataMaintenance:
                 print("📤 Step 2: Uploading to Supabase...")
                 print(f"{'='*70}\n")
                 try:
-                    supabase_service = SupabaseService()
-                    rows_uploaded = supabase_service.upload_all_listings(
+                    rows_uploaded = self.supabase_service.upload_all_listings(
                         clear_table_flag=True,  # Clear existing data
                         reset_id=True  # Reset IDs to start from 1
                     )
