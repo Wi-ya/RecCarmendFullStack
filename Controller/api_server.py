@@ -12,15 +12,10 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-# Add project root to path for imports
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
 
-# Import services from their respective locations
-from Cohere import CohereAPI
-from Pexels import PexelsAPI
-from Database_Model_Connection import SupabaseService
-from services import BackendService
+
+# Suppress Pydantic V1 compatibility warning from cohere library
+warnings.filterwarnings("ignore", message=".*Pydantic V1.*")
 
 # Load environment variables
 load_dotenv()

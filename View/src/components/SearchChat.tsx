@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send } from 'lucide-react';
+import { Send, Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, isSupabaseReady } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -24,6 +24,7 @@ export function SearchChat() {
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState<Filters>(initialFilters);
   const [isLoading, setIsLoading] = useState(false);
+
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -51,50 +52,36 @@ export function SearchChat() {
 
     setIsLoading(true);
 
-    try {
-      // Perform search via API
-      let searchQuery = query.trim();
-      
-      // If we have filters but no query, use a generic query
-      if (!searchQuery && hasActiveFilters) {
-        searchQuery = 'Filter search';
+    // Save search history if user is logged in and Supabase is ready
+    if (user && isSupabaseReady) {
+      try {
+        await supabase.from('search_history').insert([{
+          user_id: user.id,
+          query: query.trim() || 'Filter search',
+          filters: JSON.parse(JSON.stringify(filters)),
+        }]);
+      } catch {
+        console.log('Search history not available yet');
       }
-
-      // Save to search history if logged in and Supabase is configured
-      if (user && isSupabaseReady) {
-        try {
-          await supabase.from('search_history').insert([{
-            user_id: user.id,
-            query: searchQuery,
-            filters: JSON.parse(JSON.stringify(filters)),
-          }]);
-        } catch (err) {
-          // Silently fail if database isn't set up yet
-          console.log('Search history not available yet');
-        }
-      }
-
-      // Build query params with filters
-      const params = new URLSearchParams();
-      if (searchQuery) params.set('q', searchQuery);
-      if (filters.bodyTypes.length > 0) params.set('bodyTypes', filters.bodyTypes.join(','));
-      if (filters.minYear) params.set('minYear', filters.minYear);
-      if (filters.maxYear) params.set('maxYear', filters.maxYear);
-      if (filters.minPrice) params.set('minPrice', filters.minPrice);
-      if (filters.maxPrice) params.set('maxPrice', filters.maxPrice);
-      if (filters.colors.length > 0) params.set('colors', filters.colors.join(','));
-      if (filters.maxMileage) params.set('maxMileage', filters.maxMileage);
-
-      navigate(`/results?${params.toString()}`);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Something went wrong. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
     }
+
+    // Build URL params for Results page
+    const params = new URLSearchParams();
+    if (query.trim()) params.set('q', query.trim());
+    if (filters.bodyTypes.length > 0) params.set('bodyTypes', filters.bodyTypes.join(','));
+    if (filters.makes) params.set('makes', filters.makes);
+    if (filters.models) params.set('models', filters.models);
+    if (filters.colors.length > 0) params.set('colors', filters.colors.join(','));
+    if (filters.minYear) params.set('minYear', filters.minYear);
+    if (filters.maxYear) params.set('maxYear', filters.maxYear);
+    if (filters.minPrice) params.set('minPrice', filters.minPrice);
+    if (filters.maxPrice) params.set('maxPrice', filters.maxPrice);
+    if (filters.maxMileage) params.set('maxMileage', filters.maxMileage);
+
+    // Navigate to Results page
+    navigate(`/results?${params.toString()}`);
+
+    setIsLoading(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -106,7 +93,7 @@ export function SearchChat() {
 
   return (
     <div className="w-full max-w-2xl mx-auto">
-      <div className="relative bg-card rounded-2xl shadow-elevated p-2 animate-scale-in">
+      <div className="relative bg-card rounded-2xl shadow-elevated p-4 animate-scale-in">
         <div className="flex items-start gap-2">
           <Textarea
             placeholder="Describe your perfect car... e.g., 'I need a reliable family SUV under $35,000 with good fuel economy'"
@@ -116,14 +103,20 @@ export function SearchChat() {
             className="min-h-[100px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-base"
           />
         </div>
-        <div className="flex items-center justify-between pt-2 border-t border-border/50">
+
+        <div className="flex items-center justify-between pt-4 border-t border-border/50">
           <div className="flex items-center gap-3">
             <FilterDropdown
               filters={filters}
               onFiltersChange={setFilters}
               onClearFilters={() => setFilters(initialFilters)}
             />
+            <div className="hidden sm:flex items-center gap-2 text-muted-foreground text-sm">
+              <Sparkles className="h-4 w-4 text-secondary" />
+              <span>AI-powered</span>
+            </div>
           </div>
+
           <Button 
             variant="hero" 
             size="lg" 
@@ -134,7 +127,7 @@ export function SearchChat() {
               <>Finding cars...</>
             ) : (
               <>
-                <Send className="h-4 w-4" />
+                <Send className="h-4 w-4 mr-1" />
                 Search
               </>
             )}
