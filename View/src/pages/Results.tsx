@@ -38,37 +38,40 @@ const Results = () => {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  // Load filters from URL params
+  // Load filters from URL params and perform search
   useEffect(() => {
     const bodyTypes = searchParams.get('bodyTypes')?.split(',').filter(Boolean) || [];
     const colors = searchParams.get('colors')?.split(',').filter(Boolean) || [];
     
-    setFilters({
+    const loadedFilters = {
       bodyTypes,
-      makes: searchParams.get('makes')?.split(',').filter(Boolean).join(',') || '',
-      models: '',
+      makes: searchParams.get('makes') || '',
+      models: searchParams.get('models') || '',
       colors,
       minYear: searchParams.get('minYear') || '',
       maxYear: searchParams.get('maxYear') || '',
       minPrice: searchParams.get('minPrice') || '',
       maxPrice: searchParams.get('maxPrice') || '',
       maxMileage: searchParams.get('maxMileage') || '',
-    });
+    };
+    
+    setFilters(loadedFilters);
+    
+    // Perform search after filters are loaded
+    if (isInitialLoad) {
+      setIsInitialLoad(false);
+      // Perform search with loaded filters directly
+      const fetchCars = async () => {
+        await performSearch(false, loadedFilters);
+      };
+      fetchCars();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // Fetch cars when component mounts or params change
-  useEffect(() => {
-    const fetchCars = async () => {
-      if (isInitialLoad) {
-        setIsInitialLoad(false);
-        await performSearch();
-      }
-    };
-    fetchCars();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const performSearch = async (loadMore: boolean = false) => {
+  const performSearch = async (loadMore: boolean = false, searchFilters?: Filters) => {
+    // Use provided filters or current state filters
+    const activeFilters = searchFilters || filters;
     if (loadMore) {
       setIsLoadingMore(true);
     } else {
@@ -82,23 +85,25 @@ const Results = () => {
       
       // Check if we have active filters
       const hasFilters = 
-        filters.bodyTypes.length > 0 ||
-        filters.colors.length > 0 ||
-        filters.minYear ||
-        filters.maxYear ||
-        filters.minPrice ||
-        filters.maxPrice ||
-        filters.maxMileage;
+        activeFilters.bodyTypes.length > 0 ||
+        (activeFilters.makes && activeFilters.makes.trim()) ||
+        (activeFilters.models && activeFilters.models.trim()) ||
+        activeFilters.colors.length > 0 ||
+        activeFilters.minYear ||
+        activeFilters.maxYear ||
+        activeFilters.minPrice ||
+        activeFilters.maxPrice ||
+        activeFilters.maxMileage;
 
       // Use last_id for pagination if loading more
       const cursorId = loadMore ? lastId : null;
 
       if (hasFilters || !query.trim()) {
         // Use filtered search
-        response = await searchCarsWithFilters(filters, query.trim() || undefined, cursorId);
+        response = await searchCarsWithFilters(activeFilters, query.trim() || undefined, cursorId);
       } else {
         // Use AI search
-        response = await searchCars(query.trim(), filters, cursorId);
+        response = await searchCars(query.trim(), activeFilters, cursorId);
       }
 
       if (loadMore) {

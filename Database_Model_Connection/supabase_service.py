@@ -72,7 +72,8 @@ class SupabaseService:
         max_year: Optional[int] = None,
         car_type: Optional[str] = None,
         limit: int = 10,
-        return_has_more: bool = False
+        return_has_more: bool = False,
+        last_id: Optional[int] = None
     ):
         """
         Search for cars matching the specified criteria.
@@ -88,6 +89,7 @@ class SupabaseService:
             car_type: Car type/body type filter (case-insensitive partial match)
             limit: Maximum number of results to return (default: 10)
             return_has_more: If True, returns tuple with has_more and total_count
+            last_id: ID of the last car from previous page (for pagination)
         
         Returns:
             If return_has_more is False: List of car dictionaries
@@ -101,6 +103,10 @@ class SupabaseService:
         
         # Build the query with filters
         query = self.client.table('CarListings').select('*', count='exact')
+        
+        # Apply pagination: skip cars with ID <= last_id
+        if last_id is not None:
+            query = query.gt('id', last_id)
         
         # Apply numeric filters
         if maximum_price and maximum_price > 0:
@@ -116,32 +122,34 @@ class SupabaseService:
         if color:
             query = query.ilike('color', f'%{color}%')
         if make:
-            query = query.ilike('make', f'%{make}%')
+            # Use exact match for make (case-insensitive)
+            query = query.ilike('make', make)
         if model:
+            # Use partial match for model (case-insensitive)
             query = query.ilike('model', f'%{model}%')
         
         # Handle carType - try both possible column names
         if car_type:
             try:
-                query_with_cartype = query.ilike('body_type', f'%{car_type}%')
+                query_with_cartype = query.ilike('body_type', f'%{car_type}%').order('id', desc=False)
                 response = query_with_cartype.limit(limit).execute()
                 if response.data and len(response.data) > 0:
                     results = response.data
                     if return_has_more:
                         total_count = response.count if hasattr(response, 'count') else len(results)
-                        has_more = total_count > limit
+                        has_more = len(results) == limit
                         return results, has_more, total_count
                     return results
             except Exception as e:
                 # If body_type fails, try carType column
                 try:
-                    query_with_cartype = query.ilike('carType', f'%{car_type}%')
+                    query_with_cartype = query.ilike('carType', f'%{car_type}%').order('id', desc=False)
                     response = query_with_cartype.limit(limit).execute()
                     if response.data and len(response.data) > 0:
                         results = response.data
                         if return_has_more:
                             total_count = response.count if hasattr(response, 'count') else len(results)
-                            has_more = total_count > limit
+                            has_more = len(results) == limit
                             return results, has_more, total_count
                         return results
                 except Exception as e2:
@@ -150,12 +158,12 @@ class SupabaseService:
         
         # Execute query (either no carType filter, or carType filter failed)
         try:
-            response = query.limit(limit).execute()
+            response = query.order('id', desc=False).limit(limit).execute()
             results = response.data if response.data else []
             
             if return_has_more:
                 total_count = response.count if hasattr(response, 'count') else len(results)
-                has_more = total_count > limit
+                has_more = len(results) == limit
                 return results, has_more, total_count
             
             return results

@@ -40,7 +40,7 @@ class BackendService:
         self.supabase_service = supabase_service or SupabaseService()
         self.pexels_api = pexels_api or PexelsAPI()
     
-    def ai_search(self, user_query: str) -> Dict:
+    def ai_search(self, user_query: str, last_id: Optional[int] = None) -> Dict:
         """
         Perform AI-powered car search using natural language query.
         
@@ -69,13 +69,22 @@ class BackendService:
                 max_year=parsed_params.get('maxYear'),
                 car_type=parsed_params.get('carType'),
                 limit=10,
-                return_has_more=False
+                return_has_more=False,
+                last_id=last_id
             )
             
             # Format results: add images, color hex codes, filter invalid values
             formatted_results = self.format_car_results(results)
             
-            return formatted_results
+            # Get the last car's ID for pagination
+            last_car_id = None
+            if formatted_results:
+                last_car_id = formatted_results[-1].get('id')
+            
+            return {
+                'results': formatted_results,
+                'last_id': last_car_id
+            }
             
         except Exception as e:
             print(f"Error in AI search: {e}")
@@ -84,7 +93,8 @@ class BackendService:
     def filtered_search(
         self,
         filters: Dict,
-        return_has_more: bool = True
+        return_has_more: bool = True,
+        last_id: Optional[int] = None
     ) -> Tuple[List[Dict], bool, int]:
         """
         Perform filter-based car search.
@@ -135,14 +145,20 @@ class BackendService:
             max_year=max_year,
             car_type=car_type,
             limit=10,
-            return_has_more=True
+            return_has_more=True,
+            last_id=last_id
         )
         
         # Format results
         formatted_results = self.format_car_results(results)
         
+        # Get the last car's ID for pagination
+        last_car_id = None
+        if formatted_results:
+            last_car_id = formatted_results[-1].get('id')
+        
         if return_has_more:
-            return formatted_results, has_more, total_count
+            return formatted_results, has_more, total_count, last_car_id
         else:
             return formatted_results
     
@@ -219,6 +235,10 @@ class BackendService:
                 
                 # Convert to dict - uses polymorphic get_fuel_type() (Gas vs Electric/Hybrid)
                 formatted_car = car_obj.to_dict()
+                
+                # Preserve ID from original car dictionary for pagination
+                if 'id' in car:
+                    formatted_car['id'] = car['id']
                 
                 # Add color hex code for visualization
                 if formatted_car.get('color'):

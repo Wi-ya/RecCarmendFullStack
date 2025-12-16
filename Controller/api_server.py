@@ -7,12 +7,21 @@ Uses object-oriented service layer for abstraction.
 
 import os
 import sys
+import warnings
 from pathlib import Path
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
+# Import services from their respective locations
+from Cohere import CohereAPI
+from Pexels import PexelsAPI
+from Database_Model_Connection import SupabaseService
+from Controller.services import BackendService
 
 # Suppress Pydantic V1 compatibility warning from cohere library
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*")
@@ -75,26 +84,39 @@ def search():
         if not query:
             return jsonify({"error": "Query cannot be empty"}), 400
         
+        # Get last_id for pagination if provided
+        last_id = data.get('last_id')
+        if last_id is not None:
+            try:
+                last_id = int(last_id)
+            except (ValueError, TypeError):
+                last_id = None
+        
         # Perform AI search using BackendService
-        results = backend_service.ai_search(query)
+        search_result = backend_service.ai_search(query, last_id=last_id)
         
         # Check if there was an error
-        if isinstance(results, dict) and 'error' in results:
-            return jsonify(results), 400
+        if isinstance(search_result, dict) and 'error' in search_result:
+            return jsonify(search_result), 400
         
-        # For AI search, we can't easily get the total count without re-parsing
-        # So we'll check if we got exactly 10 results (likely means there are more)
-        has_more = len(results) == 10
-        total_count = len(results)
+        # Extract results and last_id from response
+        cars = search_result.get('results', [])
+        last_car_id = search_result.get('last_id')
+        
+        # Check if there are more results (if we got 10 results, there might be more)
+        has_more = len(cars) == 10
         
         # Format response
         response_data = {
-            "cars": results,
-            "count": len(results),
+            "cars": cars,
+            "count": len(cars),
             "query": query,
             "hasMore": has_more,
-            "totalCount": total_count
+            "totalCount": len(cars)
         }
+        
+        if last_car_id is not None:
+            response_data["last_id"] = last_car_id
         
         if has_more:
             response_data["message"] = "Showing 10 results. More cars available - search again to see more."
@@ -132,8 +154,20 @@ def filtered_search():
         
         filters = data['filters']
         
+        # Get last_id for pagination if provided
+        last_id = data.get('last_id')
+        if last_id is not None:
+            try:
+                last_id = int(last_id)
+            except (ValueError, TypeError):
+                last_id = None
+        
         # Search database using BackendService
-        results, has_more, total_count = backend_service.filtered_search(filters, return_has_more=True)
+        results, has_more, total_count, last_car_id = backend_service.filtered_search(
+            filters, 
+            return_has_more=True,
+            last_id=last_id
+        )
         
         # Format response
         response_data = {
@@ -142,6 +176,9 @@ def filtered_search():
             "hasMore": has_more,
             "totalCount": total_count
         }
+        
+        if last_car_id is not None:
+            response_data["last_id"] = last_car_id
         
         if has_more:
             response_data["message"] = f"Showing 10 of {total_count} results. Search again to see more cars."

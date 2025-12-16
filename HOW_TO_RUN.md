@@ -136,3 +136,5 @@ To stop either the backend or frontend server without closing your IDE:
 
 **Note:** You have to do this for both frontend and backend server or you can just close the IDE directly.
 
+**Additional Notes:** Most important functional methods have commented input arguments and output as well as explanation for readibility.
+
