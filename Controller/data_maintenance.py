@@ -14,7 +14,14 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# Optional import for scheduling (only needed for scheduled tasks)
+# Load .env from Controller or project root so DB_URL/DB_API_KEY are set when run as script
+try:
+    from dotenv import load_dotenv
+    load_dotenv(project_root / "Controller" / ".env")
+    load_dotenv(project_root / ".env")
+except ImportError:
+    pass
+
 try:
     import schedule  # type: ignore
 except ImportError:
@@ -25,9 +32,9 @@ try:
     from Controller.scraping_controller import ScrapingController
 except ImportError:
     try:
-    from .scraping_controller import ScrapingController
-except ImportError:
-    from scraping_controller import ScrapingController
+        from .scraping_controller import ScrapingController
+    except ImportError:
+        from scraping_controller import ScrapingController
 
 # Import SupabaseService from Database_Model_Connection
 from Database_Model_Connection import SupabaseService
@@ -45,22 +52,29 @@ class DataMaintenance:
         self.supabase_service = SupabaseService()
         self.last_run: datetime | None = None
     
-    def run_weekly_update(self, upload_to_supabase: bool = True) -> None:
+    def run_weekly_update(
+        self, upload_to_supabase: bool = True, single_site: str | None = None
+    ) -> None:
         """
-        Execute weekly data update by running all scrapers and uploading to Supabase.
+        Execute weekly data update by running scrapers and uploading to Supabase.
         This method is called by the scheduler.
         
         Args:
             upload_to_supabase: If True, uploads scraped data to Supabase after scraping (default: True)
+            single_site: If set (e.g. "carpages"), scrape only this site; otherwise scrape all websites.
         """
+        label = f"Scraping {single_site}..." if single_site else "Scraping websites..."
         print(f"\n{'='*70}")
         print(f"🔄 Starting weekly data update - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*70}\n")
         
         try:
-            # Step 1: Run all scrapers (saves to CSV files)
-            print("📥 Step 1: Scraping websites...")
-            self.controller.scrape_all_websites()
+            # Step 1: Run scraper(s) (saves to CSV files)
+            print(f"📥 Step 1: {label}")
+            if single_site:
+                self.controller.scrape_website(single_site)
+            else:
+                self.controller.scrape_all_websites()
             print("\n✅ Scraping completed successfully")
             
             # Step 2: Upload to Supabase (with randomized order)
@@ -118,15 +132,18 @@ class DataMaintenance:
         except KeyboardInterrupt:
             print("\n\n⏹️  Scheduler stopped by user")
     
-    def run_manual_update(self, upload_to_supabase: bool = True) -> None:
+    def run_manual_update(
+        self, upload_to_supabase: bool = True, single_site: str | None = None
+    ) -> None:
         """
         Manually trigger a data update (useful for testing or on-demand updates).
         
         Args:
             upload_to_supabase: If True, uploads scraped data to Supabase after scraping (default: True)
+            single_site: If set (e.g. "carpages"), scrape only this site; otherwise scrape all websites.
         """
         print("🔧 Running manual data update...")
-        self.run_weekly_update(upload_to_supabase=upload_to_supabase)
+        self.run_weekly_update(upload_to_supabase=upload_to_supabase, single_site=single_site)
 
 
 def main():
@@ -135,33 +152,7 @@ def main():
     Runs manual scraping of carpages.ca and uploads to Supabase.
     """
     maintenance = DataMaintenance()
-    
-    print(f"\n{'='*70}")
-    print(f"🔧 Manual scrape of carpages.ca - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{'='*70}\n")
-    
-    try:
-        # Step 1: Scrape carpages.ca
-        print("📥 Step 1: Scraping carpages.ca...")
-        maintenance.controller.scrape_website("carpages")
-        print("\n✅ Scraping completed successfully")
-    
-        # Step 2: Upload to Supabase
-        print(f"\n{'='*70}")
-        print("📤 Step 2: Uploading to Supabase...")
-        print(f"{'='*70}\n")
-        rows_uploaded = maintenance.supabase_service.upload_all_listings(
-            clear_table_flag=True,
-            reset_id=True
-        )
-        print(f"\n✅ Upload completed: {rows_uploaded} rows uploaded to Supabase")
-        
-        print(f"\n{'='*70}")
-        print(f"✅ Manual scrape completed successfully at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*70}\n")
-    except Exception as e:
-        print(f"\n❌ Scraping failed: {e}")
-        raise
+    maintenance.run_manual_update(upload_to_supabase=True, single_site="carpages")
 
 
 if __name__ == "__main__":

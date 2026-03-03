@@ -392,9 +392,11 @@ class SupabaseService:
         if clear_table_flag:
             self.clear_table(table_name)
         
-        # Step 2: Reset ID sequence
-        if reset_id:
+        # Step 2: Reset ID sequence (skip if DATABASE_URL not set; upload still proceeds)
+        if reset_id and os.getenv("DATABASE_URL"):
             self.reset_id_sequence(table_name)
+        elif reset_id:
+            print("⚠️  Skipping ID reset (DATABASE_URL not set). IDs may not start from 1.")
         
         # Step 3: Upload data
         uploaded = self.upload_data(table_name, records)

@@ -18,7 +18,7 @@ from selenium.webdriver.chrome.options import Options
 
 import undetected_chromedriver as uc
 
-from scraper_interface import Scraper
+from Webscraping.scraper_interface import Scraper
 
 
 class CarPagesScraper(Scraper):
@@ -41,6 +41,7 @@ class CarPagesScraper(Scraper):
         self.driver = None
         self.all_rows = []
         self.category_rows = defaultdict(list)
+        self._navigate_page_count = 0  # page counter per category (used instead of attaching to method)
     
     def get_scraper_name(self) -> str:
         """Return the name of this scraper."""
@@ -72,7 +73,7 @@ class CarPagesScraper(Scraper):
     
     def _create_driver(self):
         """Create a new Chrome driver. Used when restarting browser between categories to reset cache."""
-        driver = uc.Chrome(options=self._no_location_options(), version_main=142)
+        driver = uc.Chrome(options=self._no_location_options(), version_main=145)
         driver.set_page_load_timeout(15)
         driver.implicitly_wait(5)
         return driver
@@ -118,7 +119,7 @@ class CarPagesScraper(Scraper):
                 print(" >> Browser restarted and ready.")
             
             try:
-                self._navigate_page.count = 0
+                self._navigate_page_count = 0
                 print(f"\n >> Requesting category {idx + 1}/{len(category_urls)}: {category_url}...", end=" ", flush=True)
                 self.driver.get(category_url)
                 try:
@@ -146,7 +147,7 @@ class CarPagesScraper(Scraper):
     def _navigate_category(self, category_url):
         """Navigate through pages in the same category and make it restart every 50 pages to reset cache."""
         print(f"Navigating in {self.driver.title}")
-        self._navigate_page.count = 0
+        self._navigate_page_count = 0
         
         INTRACATEGORY_RESTART_INTERVAL = 50
         
@@ -192,9 +193,9 @@ class CarPagesScraper(Scraper):
         while True:
             try:
                 # Intracategory restart
-                if self._navigate_page.count > 0 and self._navigate_page.count % INTRACATEGORY_RESTART_INTERVAL == 0:
+                if self._navigate_page_count > 0 and self._navigate_page_count % INTRACATEGORY_RESTART_INTERVAL == 0:
                     current_page_url = self.driver.current_url
-                    print(f"\n >> Intracategory restart at page {self._navigate_page.count} (cache reset)...")
+                    print(f"\n >> Intracategory restart at page {self._navigate_page_count} (cache reset)...")
                     self.driver.quit()
                     sleep(2)
                     self.driver = self._create_driver()
@@ -318,9 +319,6 @@ class CarPagesScraper(Scraper):
     
     def _navigate_page(self, body_type):
         """Navigate a single page and extract listings"""
-        if not hasattr(self._navigate_page, "count"):
-            self._navigate_page.count = 0
-        
         try:
             self._bypass_captcha(self.driver)
         except Exception:
@@ -330,8 +328,8 @@ class CarPagesScraper(Scraper):
             page_car_listing_container = WebDriverWait(self.driver, 8).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div[class*='tw:laptop:col-span-8']"))
             )
-            self._navigate_page.count += 1
-            print(f"Navigating page {self._navigate_page.count} in {self.driver.title}")
+            self._navigate_page_count += 1
+            print(f"Navigating page {self._navigate_page_count} in {self.driver.title}")
             
             car_listings = page_car_listing_container.find_elements(By.CSS_SELECTOR,
                     "div[class*='tw:flex'][class*='tw:p-6']")
