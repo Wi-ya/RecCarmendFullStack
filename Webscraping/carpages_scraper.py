@@ -517,3 +517,36 @@ class CarPagesScraper(Scraper):
                 writer.writeheader()
                 writer.writerows(randomized_rows)
 
+
+def main():
+    """CLI entry point for the CarPages scraper."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Scrape car listings from carpages.ca and save to CSV(s)."
+    )
+    parser.add_argument(
+        "--data-dir", "-o",
+        default=None,
+        help="Directory to save CSV files (default: project data/)",
+    )
+    args = parser.parse_args()
+
+    data_dir = args.data_dir
+    if data_dir is None:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_parent = os.path.dirname(current_dir)
+        data_dir = os.path.join(project_parent, "data")
+
+    data_dir = os.path.abspath(data_dir)
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+    print(f"Output directory: {data_dir}")
+
+    scraper = CarPagesScraper(data_dir=data_dir)
+    scraper.scrapeWebsite()
+
+
+if __name__ == "__main__":
+    main()
+

@@ -1,71 +1,37 @@
 # How to Run
 
-This document will explain how to run this project. We assume that you have obtained the project files from a zip file. So .env files should be included.
-If this project is pulled from github, you will need to create .env files for some folders for sensitive information such as COHERE_API_KEY, SUPABASE_URL, SUPABASE_URL and PEXELS_API_KEY
+Use a **single `.env` at the project root** for secrets (COHERE_API_KEY, DB_URL, DB_API_KEY, PEXELS_API_KEY, VITE_* for frontend).  
+Use a **single `.venv` at the project root** for all Python work.
 
 ## Required software
 
-- Python 3.8+ installed
-- Node.js and npm installed
+- Python 3.10+ (3.11, 3.12, or 3.14 recommended; 3.9 works with relaxed pins)
+- Node.js and npm
 
-There will be 2 example commands for the entire step: one for macOS/Linux and one for Windows terminal.
+Commands below: macOS/Linux first, then Windows.
 
-## Step 1: Install Python Dependencies
+## Step 1: One virtual environment at project root
 
-Install dependencies for each Python module:
-These terminal commands download all the library requirements for each virtual environment in each module. 
-
-At each stage, make sure your terminal is in the project folder so that cd command directs terminal to the correct moudle.
-
-### Controller (Backend API)
+Create and activate one venv at the project root. All Python (Controller, Database, Webscraping, Cohere, Pexels) use this same venv.
 
 **macOS/Linux:**
 ```bash
-cd Controller
+cd ReccarmendFullStack
+python3.14 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-cd ..
 ```
+(Use `python3.11`, `python3.12`, or `python3` if you don't have 3.14.)
 
 **Windows (Command Prompt or PowerShell):**
 ```cmd
-cd Controller
+cd ReccarmendFullStack
+py -3.14 -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
-cd ..
 ```
 
-### Database Model Connection
-
-**macOS/Linux:**
-```bash
-cd Database_Model_Connection
-pip install -r requirements.txt
-cd ..
-```
-
-**Windows (Command Prompt or PowerShell):**
-```cmd
-cd Database_Model_Connection
-pip install -r requirements.txt
-cd ..
-```
-
-### Webscraping
-
-**macOS/Linux:**
-```bash
-cd Webscraping
-pip install -r requirements.txt
-cd ..
-```
-
-**Windows (Command Prompt or PowerShell):**
-```cmd
-cd Webscraping
-pip install -r requirements.txt
-cd ..
-```
-
-The `Cohere` and `Pexels` folders don't have separate requirements.txt files - their dependencies are included in the Controller requirements.txt. They use the same venv so that Controller can import Cohere and Pexels directly.
+The root `requirements.txt` pulls in Controller, Database_Model_Connection, and Webscraping dependencies in one go. You can delete any `.venv` (or `venv`) inside subfolders and use only this root `.venv`.
 
 ## Step 2: Install Frontend Dependencies
 
@@ -85,35 +51,39 @@ cd ..
 
 ## Step 3: Run the Backend
 
-Open a terminal and run:
+From the **project root** (with `.venv` activated):
 
 **macOS/Linux:**
 ```bash
-cd Controller
-python3 api_server.py
+cd ReccarmendFullStack
+source .venv/bin/activate
+python3 -m Controller.api_server
 ```
 
-**Windows (Command Prompt or PowerShell):**
+**Windows:**
 ```cmd
-cd Controller
-python api_server.py
+cd ReccarmendFullStack
+.venv\Scripts\activate
+python -m Controller.api_server
 ```
 
-The backend will start on `http://localhost:5001`
+Backend runs at `http://localhost:5001`.
 
 ## Step 4: Run the Frontend
 
-Open a **new terminal** and run:
+Open a **new terminal**:
 
 **macOS/Linux:**
 ```bash
-cd View
+cd ReccarmendFullStack/View
+npm install
 npm run dev
 ```
 
-**Windows (Command Prompt or PowerShell):**
+**Windows:**
 ```cmd
-cd View
+cd ReccarmendFullStack\View
+npm install
 npm run dev
 ```
 

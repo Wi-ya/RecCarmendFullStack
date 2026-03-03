@@ -19,6 +19,9 @@ from pydantic import ValidationError
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# Load .env from project root only
+load_dotenv(project_root / ".env")
+
 # Import services from their respective locations
 from Cohere import CohereAPI
 from Pexels import PexelsAPI
@@ -36,9 +39,6 @@ from Controller.services.schemas import (
 
 # Suppress Pydantic V1 compatibility warning from cohere library
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*")
-
-# Load environment variables
-load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)

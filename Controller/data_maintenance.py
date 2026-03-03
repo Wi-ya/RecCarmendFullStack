@@ -14,10 +14,9 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# Load .env from Controller or project root so DB_URL/DB_API_KEY are set when run as script
+# Load .env from project root only
 try:
     from dotenv import load_dotenv
-    load_dotenv(project_root / "Controller" / ".env")
     load_dotenv(project_root / ".env")
 except ImportError:
     pass

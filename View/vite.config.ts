@@ -4,7 +4,9 @@ import path from "path";
 
 
 // https://vitejs.dev/config/
+// Load .env from repo root (ReccarmendFullStack/.env) so one file holds all env vars
 export default defineConfig({
+  envDir: path.resolve(__dirname, ".."),
   server: {
     host: "::",
     port: 8080,

@@ -3,7 +3,9 @@ API request and response schemas (Pydantic).
 Validates request bodies and defines response shape for the REST API.
 """
 
-from typing import Optional
+from __future__ import annotations
+
+from typing import Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -44,11 +46,11 @@ class FilteredSearchRequest(BaseModel):
 class CarResponse(BaseModel):
     """Single car in API responses. Matches backend format_car_results output."""
 
-    id: int | str = Field(..., description="Car or listing id")
+    id: Union[int, str] = Field(..., description="Car or listing id")
     make: str = Field(..., description="Manufacturer")
     model: str = Field(..., description="Model name")
     year: int = Field(..., ge=0, description="Year")
-    price: int | float = Field(..., ge=0, description="Price in dollars")
+    price: Union[int, float] = Field(..., ge=0, description="Price in dollars")
     mileage: int = Field(..., ge=0, description="Mileage")
     fuelType: str = Field(..., description="Gas, Electric, or Hybrid")
     bodyType: str = Field(..., description="e.g. SUV, Sedan")

@@ -43,14 +43,14 @@ class SupabaseService:
             ConnectionError: If connection to Supabase fails.
         """
         if db_url is None:
-            db_url = os.getenv("DB_URL")
+            db_url = os.getenv("DB_URL") or os.getenv("SUPABASE_URL")
         if db_api_key is None:
-            db_api_key = os.getenv("DB_API_KEY")
+            db_api_key = os.getenv("DB_API_KEY") or os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
         
         if not db_url or not db_api_key:
             raise ValueError(
-                "Missing Supabase credentials. "
-                "Please provide DB_URL and DB_API_KEY or set them as environment variables."
+                "Missing Supabase credentials. Set in .env: DB_URL and DB_API_KEY "
+                "(or SUPABASE_URL and SUPABASE_ANON_KEY). Project root: .env"
             )
         
         try:
@@ -243,6 +243,19 @@ class SupabaseService:
         self.client.table(table_name).delete().neq('id', -1).execute()
         print("✅ Table cleared")
     
+    def reset_id_sequence_via_rpc(self) -> bool:
+        """
+        Reset CarListings id sequence via Supabase RPC (HTTP). No direct DB connection needed.
+        Requires the function to exist in Supabase (run the SQL in reset_carlistings_id.sql once).
+        Returns True if reset succeeded, False otherwise.
+        """
+        try:
+            self.client.rpc("reset_carlistings_id").execute()
+            print("✅ ID sequence reset to start from 1 (via RPC)")
+            return True
+        except Exception as e:
+            return False
+    
     def reset_id_sequence(self, table_name: str = 'CarListings') -> None:
         """
         Reset the ID identity column to start from 1.
@@ -262,22 +275,28 @@ class SupabaseService:
         if not PSYCOPG2_AVAILABLE:
             raise ValueError("psycopg2 not available - install with: pip install psycopg2-binary")
         
+        # Use direct DB port 5432, not pooler 6543 - ALTER TABLE needs a real session or it can hang
+        if ":6543" in db_connection_string or "port=6543" in db_connection_string.lower():
+            db_connection_string = db_connection_string.replace(":6543", ":5432").replace("port=6543", "port=5432")
         # Add SSL if not present
         if 'sslmode=' not in db_connection_string:
             separator = '&' if '?' in db_connection_string else '?'
             db_connection_string = f"{db_connection_string}{separator}sslmode=require"
+        # Avoid hanging: 10s connection timeout, 15s statement timeout
+        if 'connect_timeout=' not in db_connection_string:
+            sep = '&' if '?' in db_connection_string else '?'
+            db_connection_string = f"{db_connection_string}{sep}connect_timeout=10"
         
-        # Connect and reset
         conn = psycopg2.connect(db_connection_string)
         cursor = conn.cursor()
-        
-        # Try identity column reset
-        cursor.execute(f'ALTER TABLE "{table_name}" ALTER COLUMN id RESTART WITH 1;')
-        conn.commit()
-        
-        cursor.close()
-        conn.close()
-        print("✅ ID sequence reset to start from 1")
+        try:
+            cursor.execute("SET statement_timeout = '15000'")  # 15s max for ALTER
+            cursor.execute(f'ALTER TABLE "{table_name}" ALTER COLUMN id RESTART WITH 1;')
+            conn.commit()
+            print("✅ ID sequence reset to start from 1")
+        finally:
+            cursor.close()
+            conn.close()
     
     def _prepare_data(self, file_path: Path) -> list:
         """
@@ -390,11 +409,17 @@ class SupabaseService:
         if clear_table_flag:
             self.clear_table(table_name)
         
-        # Step 2: Reset ID sequence (skip if DATABASE_URL not set; upload still proceeds)
-        if reset_id and os.getenv("DATABASE_URL"):
-            self.reset_id_sequence(table_name)
-        elif reset_id:
-            print("⚠️  Skipping ID reset (DATABASE_URL not set). IDs may not start from 1.")
+        # Step 2: Reset ID sequence so new rows start at 1 (try RPC first, then direct DB)
+        if reset_id:
+            print("Resetting ID sequence for 'CarListings'...")
+            done = self.reset_id_sequence_via_rpc()
+            if not done and os.getenv("DATABASE_URL") and PSYCOPG2_AVAILABLE:
+                try:
+                    self.reset_id_sequence(table_name)
+                except Exception as e:
+                    print(f"⚠️  ID reset failed ({e}). Continuing with upload.")
+            elif not done:
+                print("⚠️  ID reset skipped (run reset_carlistings_id.sql in Supabase once to enable).")
         
         # Step 3: Upload data
         uploaded = self.upload_data(table_name, records)
