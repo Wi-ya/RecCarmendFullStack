@@ -118,14 +118,12 @@ class SupabaseService:
         if max_year and max_year > 0:
             query = query.lte('year', max_year)
         
-        # Apply text filters (case-insensitive search)
+        # Apply text filters (case-insensitive partial match)
         if color:
             query = query.ilike('color', f'%{color}%')
         if make:
-            # Use exact match for make (case-insensitive)
-            query = query.ilike('make', make)
+            query = query.ilike('make', f'%{make}%')
         if model:
-            # Use partial match for model (case-insensitive)
             query = query.ilike('model', f'%{model}%')
         
         # Handle carType - try both possible column names

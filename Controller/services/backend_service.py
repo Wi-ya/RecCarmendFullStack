@@ -58,20 +58,50 @@ class BackendService:
             if isinstance(parsed_params, dict) and 'error' in parsed_params:
                 return parsed_params
             
+            # Normalize parsed params: treat generic/placeholder values as no filter
+            # so we don't filter by "any", "car", "n/a", etc. and get zero results
+            maximum_price = self._safe_int(parsed_params.get('maximumPrice'), 0) or None
+            maximum_mileage = self._safe_int(parsed_params.get('maximumMileage'), 0) or None
+            min_year = self._safe_int(parsed_params.get('minYear'), 0) or None
+            max_year = self._safe_int(parsed_params.get('maxYear'), 2026)
+            if not max_year or max_year <= 0:
+                max_year = 2026
+            color = self._normalize_search_param(parsed_params.get('color'))
+            make = self._normalize_search_param(parsed_params.get('make'))
+            model = self._normalize_search_param(parsed_params.get('model'))
+            car_type = self._normalize_search_param(parsed_params.get('carType'))
+            
             # Search database with parsed parameters
             results = self.supabase_service.search_cars(
-                maximum_price=parsed_params.get('maximumPrice'),
-                maximum_mileage=parsed_params.get('maximumMileage'),
-                color=parsed_params.get('color'),
-                make=parsed_params.get('make'),
-                model=parsed_params.get('model'),
-                min_year=parsed_params.get('minYear'),
-                max_year=parsed_params.get('maxYear'),
-                car_type=parsed_params.get('carType'),
+                maximum_price=maximum_price,
+                maximum_mileage=maximum_mileage,
+                color=color,
+                make=make,
+                model=model,
+                min_year=min_year,
+                max_year=max_year,
+                car_type=car_type,
                 limit=10,
                 return_has_more=False,
                 last_id=last_id
             )
+            
+            # If no results but we had text filters, retry with only numeric filters
+            # (avoids empty results when Cohere over-specifies or DB uses different wording)
+            if not results and (make or model or color or car_type):
+                results = self.supabase_service.search_cars(
+                    maximum_price=maximum_price,
+                    maximum_mileage=maximum_mileage,
+                    color=None,
+                    make=None,
+                    model=None,
+                    min_year=min_year,
+                    max_year=max_year,
+                    car_type=None,
+                    limit=10,
+                    return_has_more=False,
+                    last_id=last_id
+                )
             
             # Format results: add images, color hex codes, filter invalid values
             formatted_results = self.format_car_results(results)
@@ -344,4 +374,22 @@ class BackendService:
             return int(float(str(value).replace(",", "")))
         except:
             return default
+    
+    def _normalize_search_param(self, value: Optional[str]) -> Optional[str]:
+        """
+        Return None for placeholder/generic values so they are not used as filters.
+        Prevents zero results when Cohere returns "any", "car", "n/a", etc.
+        """
+        if value is None:
+            return None
+        s = str(value).strip().lower()
+        if not s:
+            return None
+        placeholders = {
+            "null", "none", "n/a", "na", "any", "-", "--", "n.a.", "n.a",
+            "car", "cars", "vehicle", "vehicles", "not specified", "unspecified",
+        }
+        if s in placeholders or s in ("no", "no preference"):
+            return None
+        return value.strip() if value else None
 
